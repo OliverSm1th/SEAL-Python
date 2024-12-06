@@ -1,6 +1,5 @@
 import re
-from typing import Dict, List, Tuple, Optional as Opt, Union
-from seal_models import SealMetadata
+from seal_meta import SealMetadata
 from seal_file import SealFile
 from io import BufferedReader as File
 
@@ -19,15 +18,15 @@ def is_png(file: File) -> bool:
     return compare_b_str(file, b"\x89PNG\r\n\x1a\n")
 
 def seal_sign_png(file: File, seal: SealMetadata):
-   s_arr = seal_read_png(file)
-   s_file= SealFile(file)
-   if len(s_arr) > 0:
+    # Scan the file for prior signatures
+    s_file : SealFile = seal_read_png(file)
+    if s_file.is_finalised:  raise ValueError("Cannot add SEAL info- file is already finalised")
     
 
     return
 
 
-def seal_read_png(file: File) -> List[SealMetadata]:
+def seal_read_png(file: File) -> SealFile:
     """Fetches SEAL metadata entries from a PNG file
 
     Parses the PNG file, extracting all SEAL metadata entries. 
@@ -43,7 +42,6 @@ def seal_read_png(file: File) -> List[SealMetadata]:
     if not is_png(file): raise ValueError("Invalid PNG, missing PNG header")
 
     s_file = SealFile(file)
-    s_arr  : List[SealMetadata] = []
 
     # Go through each PNG chunk
     # If SEAL, text or itxt, check for signature
@@ -58,10 +56,9 @@ def seal_read_png(file: File) -> List[SealMetadata]:
         print(f"Chunk: size={chunk_size}   type={chunk_type}")
         
         if(chunk_type.lower() in ["text", "itxt", "seal"]):  # TODO: for tEXt do you separate the keyword?
-            seal_arr = s_file.read_txt_block(chunk_size)
-            if len(seal_arr) > 0:
+            result = s_file.read_txt_block(chunk_size)
+            if result:
                 print("Found valid SEAL entry")
-                s_arr.extend(seal_arr)
         else:
             s_file.read(chunk_size)
         
@@ -71,12 +68,10 @@ def seal_read_png(file: File) -> List[SealMetadata]:
         chunk_size_b = s_file.read(4)
         chunk_type_b = list(s_file.read(4))
     file.seek(0, 0)
-    return s_arr
+    return s_file
 
 
-
-
-TEST_PNG = "../../SEAL-C/test-unsigned-seal.png"
+TEST_PNG = "./tests/files/png/test-badsig-Pp.png"
 file = open(TEST_PNG, "rb")
 seal_read_png(file)
 

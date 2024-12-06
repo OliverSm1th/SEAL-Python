@@ -4,8 +4,8 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-rsa = "*"
 dnspython = "*"
+pycryptodome = "*"
 
 [dev-packages]
 mypy = "*"

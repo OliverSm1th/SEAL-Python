@@ -1,18 +1,15 @@
-import hashlib
-from typing import cast, Literal as Lit, Optional as Opt, Any, get_type_hints, get_args, List, Tuple, NamedTuple, Self
+from typing import cast, Literal as Lit, Optional as Opt, get_args, List, Tuple, NamedTuple, Self
 import re
 import base64
 from binascii import Error as BinError
 from datetime import datetime
 import warnings
-import rsa
 
 # TEMP:
 def warning_format(msg, category, filename, lineno, line=None):
 	return f"WARNING: {msg}\n"
 warnings.formatwarning = warning_format
 
-KA = ['rsa', 'ec']
 
 BYTE_LIT_ORDER = "FPpSsf"
 
@@ -41,13 +38,12 @@ class BytePos(NamedTuple):
 	def check_valid(self): # Checks for basic errors without any other context
 		if self.literal == '': self.literal = 'F' if self.is_start else 'f'
 
-		if not self.literal in BYTE_LIT_ORDER: raise ValueError("Invalid ByteRange, invalid literal "+self.literal)
+		if not self.literal in BYTE_LIT_ORDER: 		   raise ValueError("Invalid ByteRange, invalid literal "+self.literal)
 		if (self.literal == 'F' and self.offset < 0 ): raise ValueError("Invalid ByteRange, cannot be before the file start")
 		if (self.literal == 'f' and self.offset > 0 ): raise ValueError("Invalid ByteRange, cannot be after the file end")
 		if (self.literal == 'S' and self.offset > 0 or
 	  		self.literal == 's' and self.offset < 0):  raise ValueError("Invalid ByteRange, cannot include a signature")
 	
-
 	def check_next(self, next : 'BytePos'):
 		if next.literal == self.literal:
 			if next.offset < self.offset: 
@@ -67,6 +63,7 @@ class BytePos(NamedTuple):
 	def __str__(self):
 		offset = f'+{self.offset}' if self.offset > 0 else self.offset if self.offset<0 else ""
 		return f"{self.literal}{offset}"
+
 
 class SealByteRange:
 	str_byte_range: str
@@ -103,7 +100,6 @@ class SealByteRange:
 		for range in self.byte_range:
 			arr.extend(range)
 		return arr
-
 	
 	def overlaps(a, b: Self) -> bool:
 		a_arr = a._flatten()
@@ -140,7 +136,6 @@ class SealByteRange:
 			else:			b_i += 1
 		return False
 	
-	
 	def includes_lit(self, lit: str, allow_offset: bool = False) -> bool:
 		for byte_pos in self._flatten():
 			if byte_pos.literal == lit and (allow_offset or byte_pos.offset == 0):
@@ -162,39 +157,40 @@ class SealSignature(NamedTuple):
 	sig_d: Opt[datetime] = None
 
 
-VALID_SIG_FORMATS = Lit["hex", "HEX", "base64", "bin"]
+SIG_FORMATS_T = Lit["hex", "HEX", "base64", "bin"]
+SIG_FORMATS = get_args(SIG_FORMATS_T)
 class SealSignatureFormat:
 	date_format: Opt[int] = None
-	signature_format: VALID_SIG_FORMATS
+	signature_format: SIG_FORMATS_T
 	
 	def __init__(self, sf: str) -> None:
-		signature_format = sf
+		sig_str = sf
 		sep_num = sf.count(':')
 
 		if(sep_num > 1 or sep_num < 0):
 			raise ValueError("Signature format must be of form 'date[0-9]:format' or 'format'")
 
 		if(sep_num == 1):  # Includes a date specifier
-			[date_format, signature_format] = sf.split(':')
+			[date_format, sig_str] = sf.split(':')
 			if not(re.match("^date[0-9]?$", date_format)):
 				raise ValueError("Invalid date format, should be of the form: 'date[0-9]'")
 			
 			self.date_format = cast(int, date_format[4]) if len(date_format) == 5 else 0
 
-		if not(re.match("^(hex|HEX|base64|bin)$", signature_format)):
+		if not sig_str in SIG_FORMATS:
 			raise ValueError("Invalid signature format, should be one of: 'hex', 'HEX', 'base64', 'bin'")
-		self.signature_format = cast(VALID_SIG_FORMATS, signature_format)
+		self.signature_format = cast(SIG_FORMATS_T, sig_str)
 	
 	def sig_bytes(self, s: str) -> bytes:
 		sf = self.signature_format
 		if sf == "base64":
 			no_pad = re.sub('[\\s]+$', '', s)
-			return SealBase64.to_bytes(no_pad)
+			return b64_to_bytes(no_pad)
 		elif sf == "bin":
 			if not(re.match("^[01]+$", s)): 
 				raise ValueError("Invalid binary signature, must only contain 0 or 1")
 			return int(s, 2).to_bytes((len(s)+7)//8)  # From https://stackoverflow.com/a/32676625
-		elif sf in ["hex", "HEX"]:
+		elif sf.lower() == "hex":
 			m = "a-f" if sf == "hex" else "A-F"
 			if not(re.match(f"^[0-9{m}]+$", s)):
 				raise ValueError(f"Invalid hex signature, must only contain the following characters: [0-9{m}]")
@@ -277,6 +273,9 @@ class SealKeyVersion:
 		self.key_version = kv
 	def __str__(self) -> str:
 		return self.key_version
+	def __eq__(self, other: object):
+		return isinstance(other, SealKeyVersion) and self.key_version == other.key_version
+
 
 class SealUID:
 	uid: str
@@ -286,27 +285,31 @@ class SealUID:
 		self.uid = uid
 	def __str__(self) -> str:
 		return self.uid
+	def __eq__(self, other: object):
+		return isinstance(other, SealUID) and self.uid == other.uid
+
+
+def b64_to_bytes(str_64: str) -> bytes:
+	str_val = re.sub('={0,2}$', '', str_64)
+	str_val_pad = str_val + '='*(4-len(str_val)%4)
+
+	try:
+		return base64.b64decode(str_val_pad, validate=True)
+	except BinError as e:
+		raise ValueError("Invalid base64: \""+str_val_pad+" ("+str(e)+")") from None
+
 
 class SealBase64:
 	val: bytes
 	def __init__(self, str_64: str):
 		str_val = re.sub('[\"\\s]', '', str_64)
-		self.val = SealBase64.to_bytes(str_val)
-	
-	@staticmethod
-	def to_bytes(str_64: str) -> bytes:
-		str_val = re.sub('={0,2}$', '', str_64)
-		str_val_pad = str_val + '='*(4-len(str_val)%4)
-
-		try:
-			return base64.b64decode(str_val_pad, validate=True)
-		except BinError as e:
-			raise ValueError("Invalid base64: \""+str_val_pad+" ("+str(e)+")") from None
+		self.val = b64_to_bytes(str_val)		
 
 	def __str__(self) -> str:
 		b64 = base64.b64encode(self.val)
 		str_b64 = b64.decode('ascii')
 		return str_b64
+
 
 class SealTimestamp:
 	time: datetime
@@ -319,11 +322,13 @@ class SealTimestamp:
 	def __str__(self) -> str:
 		return self.time.isoformat()
 
+
 KEY_ALGS_T = Lit['rsa']
 KEY_ALGS = get_args(KEY_ALGS_T)
 
 DA_ALGS_T = Lit[ 'sha256', 'sha512', 'sha1']
 DA_ALGS = get_args(DA_ALGS_T)
+
 
 OPT_QUOT = True	  	# Include quotes even if the value doesn't need them
 QUOT_CHR = '\"'		# Quote character (either " or ')
@@ -347,199 +352,3 @@ def format_str(str:str) -> str: # Add quotation marks (if necessary)
 		return QUOT_CHR + str + QUOT_CHR
 	else:
 		return str
-
-
-class SealMetadata():
-	# Required:
-	seal: int					# SEAL Version
-	ka:   KEY_ALGS_T   			# Key Algorithm
-	s:    SealSignature         # Signature
-	d:	  str					# Domain Name
-
-	# Optional:  (with default values)
-	kv:   SealKeyVersion		# Key Version
-	da:   DA_ALGS_T				# Digest Algorithm
-	b:    SealByteRange	 		# Digest Byte Range
-	uid:  SealUID				# UUID/Date
-	sf:   SealSignatureFormat	# Signature Format
-	#             (no default)
-	id:   Opt[str]  			# Account identifier
-	copyright: Opt[str]			# Copyright information
-	info: Opt[str]				# Textual comment information
-	sl:   Opt[int] 				# Signature Length (not implemented)
-
-	def __init__(self,	seal: int,			ka:  str,			s:  str,
-			  			d:    str, 			kv:  str="1",		da: str='sha256',
-						b:    str="F~S,s~f",uid: str="",		sf: str='base64',
-						id:   Opt[str]=None,		copyright: 	Opt[str]=None,
-						info: Opt[str]=None,		sl:			Opt[int]=None):
-		self.d  = d
-		if ka in KEY_ALGS:  self.ka = cast(KEY_ALGS_T, ka)
-		else: raise ValueError("Invalid key algorithm: "+ka)
-		self.seal = seal
-		self.kv = SealKeyVersion(kv)
-		if da in DA_ALGS: 	self.da = cast(DA_ALGS_T, da)
-		else:  raise ValueError("Invalid key version: "+kv)
-		self.b   = 	SealByteRange(b)
-		self.uid = 	SealUID(uid)
-		self.sf  = 	SealSignatureFormat(sf)
-		self.s   =  self.sf.construct_sig(s)
-
-		self.id = id
-		self.copyright = copyright
-		self.info = info
-		self.sl = sl  # (not implemented)
-
-	@classmethod
-	def fromEntry(obj, meta_str: str):
-		meta_dict : dict[str, Any] = {}
-		meta_struct = get_type_hints(obj)
-		fields = get_fields(meta_str)
-
-		for field in fields:
-			[key, val] = field
-			if not key in meta_struct:
-				raise ValueError(f"Unexpected key in SEAL string: \'{key}\'")
-			value = clean_str(val)
-
-			if key in ['seal', 'sl']:
-				if not value.isnumeric():
-					raise ValueError(f"Invalid integer value for \'{key}\' in SEAL string: \'{value}\'")
-				else:
-					meta_dict[key] = int(value)
-			else: 	meta_dict[key] = value
-		
-		# Check Required:
-		required = {'seal': 'SEAL version', 'ka': 'Key Algorithm', 's': 'signature', 'd': 'domain name'}
-		for key in required:
-			if not key in meta_dict: raise ValueError(f"Missing {meta_dict[key]} ({key})")
-
-		return obj(**meta_dict)
-	
-	def toEntry(self) -> str:
-		options = []
-		attr_dict = self.__dict__
-		
-		attr_order = list(attr_dict.keys())
-		
-		attr_order.sort(key=lambda k: -1 if k == 'seal' else 99999 if k == 's' else len(str(attr_dict[k])))
-
-		for attr in attr_order:
-			if attr == 's':
-				str_val = self.sf.convert_sig(self.s)
-			elif attr_dict[attr] == None:
-				continue
-			else:
-				str_val = str(attr_dict[attr])
-				if len(str_val) == 0: continue
-				str_val = format_str(str_val)
-			
-			options.append(attr + "=" + str_val)
-		return ' '.join(options)
-
-	
-	def da_hash(self, digest_bytes: bytes) -> bytes:
-		if self.da == "sha1":
-			return hashlib.sha1(digest_bytes).digest()
-		elif self.da == "sha256":
-			return hashlib.sha256(digest_bytes).digest()
-		elif self.da == "sha512":
-			return hashlib.sha512(digest_bytes).digest()
-		raise RuntimeError("Invalid digest algorithm: "+self.da)
-
-	def ka_decrypt(self, public_key: SealBase64) -> bytes:
-		if self.ka == "rsa":
-			p_key = rsa.PrivateKey.load_pkcs1(public_key.val, "DER")
-			return rsa.decrypt(self.s.sig_b, p_key)
-		raise RuntimeError("Invalid key algorithm: "+self.ka)
-			
-	def __str__(self) -> str:
-		
-
-		options = []
-		attr_dict = self.__dict__
-		
-		attr_order = list(attr_dict.keys())
-		
-		attr_order.sort(key=lambda k: -1 if k == 'seal' else 99999 if k == 's' else len(str(attr_dict[k])))
-
-		for attr in attr_order:
-			if attr == 's':
-				str_val = self.sf.convert_sig(self.s)
-			elif attr_dict[attr] == None:
-				continue
-			else:
-				str_val = str(attr_dict[attr])
-				if len(str_val) == 0: continue
-				str_val = format_str(str_val)
-			
-			options.append(attr + "=" + str_val)
-		return ' '.join(options)
-
-class SealDNS():
-	# Required:
-	seal: 	int					# SEAL Version
-	p:		Opt[SealBase64]		# Base64 Public Key  (None=revoke)
-	ka:   	KEY_ALGS_T			# Key Algorithm
-	
-	# Optional: (with default values)
-	kv:		SealKeyVersion		# Key Version
-	uid: 	SealUID				# UUID/Date
-	#			(no default)
-	r:		Opt[SealTimestamp]	# Revocation Date (in GMT)
-
-	def __init__(self,  seal: int,	p: Opt[str],	ka: str = 'rsa',  
-						kv: str = "1", 		uid:  str = "",
-						r:  Opt[str] = None 	):
-		self.seal = seal
-		if p is not None and p.strip() != "revoke" and len(p.strip()) > 0:
-			self.p = SealBase64(p)
-		else: 				# All instances of this public key is revoked
-			self.p = None
-
-		if ka in KEY_ALGS:  self.ka = cast(KEY_ALGS_T, ka)
-		else: raise ValueError("Invalid key algorithm: "+ka)
-		self.kv = SealKeyVersion(kv)
-		self.uid = SealUID(uid)
-		if r is not None:	# All signatures after the date is invalid
-			self.r = SealTimestamp(r)
-
-	@classmethod
-	def fromEntry(obj, dns_str: str):
-		dns_dict : dict[str, Any] = {}
-		dns_struct = get_type_hints(obj)
-		fields = get_fields(dns_str)
-
-		for field in fields:
-			[key, val] = field
-			if not key in dns_struct:
-				raise ValueError("Unexpected key in DNS string: "+key)
-			value = clean_str(val)
-			
-			if key == 'seal': 	
-				if not value.isnumeric():
-					raise ValueError(f"Invalid integer value for \'{key}\' in SEAL string: \'{value}\'")
-				else:
-					dns_dict[key] = int(value)
-			else: 	dns_dict[key] = value
-
-		required = {'seal': 'SEAL version', 'ka': 'Key Algorithm'}
-		
-		for key in required:
-			if not key in dns_dict: raise ValueError(f"Missing {dns_dict[key]} ({key})")
-
-		return obj(**dns_dict)
-
-	def __str__(self) -> str:
-		options = []
-		attr_dict = self.__dict__
-		
-		attr_order = list(attr_dict.keys())
-		attr_order.sort(key=lambda k: -1 if k == 'seal' else 99999 if k == 'p' else len(str(attr_dict[k])))
-
-		for attr in attr_order:
-			if attr_dict[attr] != None:
-				str_val = str(attr_dict[attr])
-				if len(str_val) == 0: continue
-				options.append(attr + "=" + str_val)
-		return ' '.join(options)

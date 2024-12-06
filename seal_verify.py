@@ -1,5 +1,6 @@
 import warnings
-from seal_models import SealDNS, SealMetadata
+from seal_meta import SealMetadata
+from seal_dns  import SealDNS
 from typing import List, Optional as Opt
 import dns.resolver as DNS, dns.rdatatype as DNS_TYPE
 
@@ -47,28 +48,40 @@ def verify_seal(seal_meta: SealMetadata, digest_bytes: bytes):
     
     valid_dns_arr : List[SealDNS] = []
     for seal_dns in seal_dns_arr:
-        if seal_dns.seal!= seal_meta.seal:continue # TODO: Do you just reject all versions != 1?
-        if seal_dns.ka  != seal_meta.ka:  continue
-        if seal_dns.kv  != seal_meta.kv:  continue
-        if seal_dns.uid != seal_meta.uid: continue
+        if seal_dns.seal != seal_meta.seal:
+            warnings.warn(f" - Invalid DNS: DNS version ({seal_dns.seal}) != Record version ({seal_meta.seal})")
+            continue   # TODO: Do you just reject all versions != 1?
+        if seal_dns.ka != seal_meta.ka:  
+            warnings.warn(f" - Invalid DNS: DNS key algorithm ({seal_dns.ka}) != Record key algorithm ({seal_meta.ka})")
+            continue
+        if seal_dns.kv != seal_meta.kv:  
+            warnings.warn(f" - Invalid DNS: DNS key version ({seal_dns.kv}) != Record key version ({seal_meta.kv})")
+            continue
+        if seal_dns.uid != seal_meta.uid: 
+            warnings.warn(f" - Invalid DNS: DNS uid ({seal_dns.uid}) != Record uid ({seal_meta.uid})")
+            continue
         if seal_dns.p is None: # Public key revoked  # TODO: Should this check for other DNS records? 
             raise ValueError("All instances of the public key are revoked")
-        if (seal_dns.r is not None and 
-            (seal_meta.s.sig_d is None or seal_dns.r.time < seal_meta.s.sig_d)):
+        if (seal_dns.r is not None and (seal_meta.s.sig_d is None or seal_dns.r.time < seal_meta.s.sig_d)):
             raise ValueError(f"All signatures after {seal_dns.r} are revoked")
         valid_dns_arr.append(seal_dns)
     if len(valid_dns_arr) == 0:
         raise ValueError("No valid DNS entry found")
     
+
     for valid_dns in valid_dns_arr:
         if valid_dns.p is None: return
         # Decrypt the signature using the public key
-        expected_digest = seal_meta.ka_decrypt(valid_dns.p)
-        if digest == expected_digest: return
+        result = seal_meta.ka_verify(valid_dns.p, digest)
+        if result:  return
+        else:
+            warnings.warn(f" - Invalid DNS: Calculated digest != Expected digest")
+        
+
     
     raise ValueError("No matching DNS entry found")
 
-# seal_dns_arr = get_seal_dns("signmydata.com")
+# seal_dns_arr = get_seal_dns("***REMOVED***")
 # print("---RESULT---")
 # for seal_dns in seal_dns_arr:
 #     print(seal_dns)
