@@ -91,6 +91,12 @@ class SealFile():
         return seal
 
     def read_seal_str(self, seal_wrap: str) -> SealMetadata:
+        # Wrapper can be one of:
+        # seal:seal<seal ..>
+        # </seal:seal>
+        # <seal:seal seal='<seal ...>'/>
+        # <rdf ...
+
         if not re.match("^<((\\*:)|\\?)?seal ", seal_wrap):
             raise ValueError(f"Not a valid SEAL string. Must be be of the form: <seal .../>")
         
