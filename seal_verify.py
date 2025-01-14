@@ -37,8 +37,8 @@ def get_seal_dns(domain: str) -> List[SealDNS]:
 
 
 def verify_seal(seal_meta: SealMetadata, digest_bytes: bytes):
-    # Generate a digest of the file # file: SealFile
-    # digest_bytes = file.fetch_byte_range(seal_meta.b)
+    if seal_meta.s is None: raise ValueError("Missing signature")
+
     digest       = seal_meta.da_hash(digest_bytes)
     
     # Retrieve the public key from the DNS entry
@@ -65,10 +65,7 @@ def verify_seal(seal_meta: SealMetadata, digest_bytes: bytes):
         if (seal_dns.r is not None and (seal_meta.s.sig_d is None or seal_dns.r.time < seal_meta.s.sig_d)):
             raise ValueError(f"All signatures after {seal_dns.r} are revoked")
         valid_dns_arr.append(seal_dns)
-    if len(valid_dns_arr) == 0:
-        raise ValueError("No valid DNS entry found")
     
-
     for valid_dns in valid_dns_arr:
         if valid_dns.p is None: return
         # Decrypt the signature using the public key
@@ -76,12 +73,5 @@ def verify_seal(seal_meta: SealMetadata, digest_bytes: bytes):
         if result:  return
         else:
             warnings.warn(f" - Invalid DNS: Calculated digest != Expected digest")
-        
 
-    
     raise ValueError("No matching DNS entry found")
-
-# seal_dns_arr = get_seal_dns("***REMOVED***")
-# print("---RESULT---")
-# for seal_dns in seal_dns_arr:
-#     print(seal_dns)

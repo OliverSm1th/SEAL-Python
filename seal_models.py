@@ -231,7 +231,6 @@ class SealSignatureFormat:
 						
 			date_len = self.date_len()
 
-			
 			if len(date_str) != date_len or (self.date_format > 0 and s[14] != '.'):
 				raise ValueError(f"Invalid signature, date does not match the expected format: {self.date_f_str()}")
 			
@@ -301,9 +300,12 @@ def b64_to_bytes(str_64: str) -> bytes:
 
 class SealBase64:
 	val: bytes
-	def __init__(self, str_64: str):
-		str_val = re.sub('[\"\\s]', '', str_64)
-		self.val = b64_to_bytes(str_val)		
+	def __init__(self, str_64: str|bytes):
+		if isinstance(str_64, bytes):
+			self.val = str_64
+		else:
+			str_val = re.sub('[\"\\s]', '', str_64)
+			self.val = b64_to_bytes(str_val)
 
 	def __str__(self) -> str:
 		b64 = base64.b64encode(self.val)
