@@ -49,16 +49,16 @@ def verify_seal(seal_meta: SealMetadata, digest_bytes: bytes):
     valid_dns_arr : List[SealDNS] = []
     for seal_dns in seal_dns_arr:
         if seal_dns.seal != seal_meta.seal:
-            warnings.warn(f" - Invalid DNS: DNS version ({seal_dns.seal}) != Record version ({seal_meta.seal})")
+            warnings.warn(f" - Invalid DNS record: DNS version ({seal_dns.seal}) != Record version ({seal_meta.seal})")
             continue   # TODO: Do you just reject all versions != 1?
         if seal_dns.ka != seal_meta.ka:  
-            warnings.warn(f" - Invalid DNS: DNS key algorithm ({seal_dns.ka}) != Record key algorithm ({seal_meta.ka})")
+            warnings.warn(f" - Invalid DNS record: DNS key algorithm ({seal_dns.ka}) != Record key algorithm ({seal_meta.ka})")
             continue
         if seal_dns.kv != seal_meta.kv:  
-            warnings.warn(f" - Invalid DNS: DNS key version ({seal_dns.kv}) != Record key version ({seal_meta.kv})")
+            warnings.warn(f" - Invalid DNS record: DNS key version ({seal_dns.kv}) != Record key version ({seal_meta.kv})")
             continue
         if seal_dns.uid != seal_meta.uid: 
-            warnings.warn(f" - Invalid DNS: DNS uid ({seal_dns.uid}) != Record uid ({seal_meta.uid})")
+            warnings.warn(f" - Invalid DNS record: DNS uid ({seal_dns.uid}) != Record uid ({seal_meta.uid})")
             continue
         if seal_dns.p is None: # Public key revoked  # TODO: Should this check for other DNS records? 
             raise ValueError("All instances of the public key are revoked")
@@ -66,12 +66,13 @@ def verify_seal(seal_meta: SealMetadata, digest_bytes: bytes):
             raise ValueError(f"All signatures after {seal_dns.r} are revoked")
         valid_dns_arr.append(seal_dns)
     
+    
     for valid_dns in valid_dns_arr:
         if valid_dns.p is None: return
         # Decrypt the signature using the public key
         result = seal_meta.ka_verify(valid_dns.p, digest)
         if result:  return
         else:
-            warnings.warn(f" - Invalid DNS: Calculated digest != Expected digest")
+            warnings.warn(f" - Invalid DNS record: Calculated digest != Expected digest")
 
     raise ValueError("No matching DNS entry found")

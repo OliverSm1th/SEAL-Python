@@ -1,5 +1,6 @@
 import re
-from typing import Optional as Opt, Self, Any, Protocol, cast, get_type_hints
+from typing import Optional as Opt,Any, Protocol, Tuple, cast, get_type_hints
+from typing_extensions import Self
 from Crypto.Hash import SHA256, SHA512, SHA1
 import Crypto.PublicKey.RSA as RSA
 from Crypto.Signature import pkcs1_15
@@ -165,6 +166,16 @@ class SealMetadata():
 	
 	def toWrapper(self) -> str:
 		return f"<seal {self.toEntry()}/>"
+
+	@staticmethod
+	def get_offsets(seal_str: str) -> Tuple[int, int]:
+		S = seal_str.index(" s=") + 3
+		s = len(seal_str) - 2
+		print(seal_str[S])
+		print(seal_str[s])
+		if seal_str[S] == seal_str[s-1] and seal_str[S] in ['\'', '\"']:  
+			S += 1; s -= 1
+		return (S, s)
 	
 	def __str__(self) -> str:
 		options = []
@@ -186,4 +197,3 @@ class SealMetadata():
 			
 			options.append(attr + "=" + str_val)
 		return ' '.join(options)
-	

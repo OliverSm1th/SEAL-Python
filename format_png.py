@@ -1,5 +1,5 @@
 from seal_meta import SealMetadata
-from seal_file import SealFile
+from seal_file import  SealFile
 from seal_models import SealBase64
 
 import re
@@ -7,31 +7,28 @@ from typing import List
 from io import BufferedReader as File
 
 
-
-
-def seal_sign_png(s_file: SealFile, seal: SealMetadata, priv_key: bytes|str, new_path: str) -> bool:
+def seal_sign_png(s_file: SealFile, seal: SealMetadata, priv_key: bytes|str, new_path: str):
     # Scan the file for prior signatures
     s_file = seal_read_png(s_file)
     if s_file.is_finalised:  raise ValueError("File is already finalised")
     if not s_file.load_pos("IEND"): raise ValueError("File improperly formatted (missing IEND chunk)")
 
-    # Add the metadata to the file (no signature)
-    chunk_data_b = seal.toWrapper().encode()
+    # Generate the dummy signature
+    print("Generating dummy signature") 
+    dummy_seal = s_file.sign_seal_meta(seal, SealBase64(priv_key))
+    print("   "+str(dummy_seal))
+    dummy_chunk = generate_seal_chunk(dummy_seal.toWrapper().encode())
+    S_i = s_file.insert_seal_block(dummy_chunk, dummy_seal, 8, new_path)
+    print("   Inserted into new file at: "+new_path)
 
-    # Generate the signature
+    # Generate the real signature
+    print("Generating real signature")
     signed_seal = s_file.sign_seal_meta(seal, SealBase64(priv_key))
-
-    chunk_data_b = signed_seal.toWrapper().encode()
-
-    chunk_size_b = int.to_bytes(len(chunk_data_b), 4, byteorder="big")
-    chunk_type_b = bytes(map(ord, "sEAl"))
-    
-    chunk_b = chunk_size_b + chunk_type_b + chunk_data_b
-    chunk_crc = crc(chunk_b)
-    chunk_b += int.to_bytes(chunk_crc, 4, byteorder="big")
-
-    return s_file.insert(chunk_b, new_path)
-
+    print("   "+str(signed_seal))
+    chunk_b = generate_seal_chunk(signed_seal.toWrapper().encode())
+    s_file.insert_seal_block(chunk_b, signed_seal, 8, S_i=S_i)
+    print("   Updated file: "+new_path)
+    s_file.reset()
 
 def seal_read_png(s_file: SealFile) -> SealFile:
     """Fetches SEAL metadata entries from a PNG file
@@ -71,7 +68,7 @@ def seal_read_png(s_file: SealFile) -> SealFile:
                 print("│ " + ('✓' if result[0] else '✕') + " " + result[1].__str__().split('s=')[0]+"s=...")
         else:
             if chunk_type.lower() == "iend":  # For writing later
-                s_file.save_pos("IEND", -4)
+                s_file.save_pos("IEND", -8)
             s_file.read(chunk_size)
         
         s_file.read(4)
@@ -81,6 +78,7 @@ def seal_read_png(s_file: SealFile) -> SealFile:
         chunk_type_b = list(s_file.read(4))
 
     print("└──────PNG──────┘")
+    s_file.reset()
     return s_file
 
 # Helper Functions;
@@ -92,6 +90,14 @@ def is_png(file: File) -> bool:
     ::return:: True if the file starts with the PNG header"""
     return compare_b_str(file, b"\x89PNG\r\n\x1a\n")
 
+def generate_seal_chunk(data_b: bytes) -> bytes:
+    len_b = int.to_bytes(len(data_b), 4, byteorder="big")
+    print(len_b)
+    type_b = bytes(map(ord, "sEAl"))
+    chunk_crc = crc(type_b + data_b)
+    chunk_b = len_b + type_b + data_b + int.to_bytes(chunk_crc, 4, byteorder="big")
+    print(chunk_crc)
+    return chunk_b
 
 
 # CRC Implemention using: https://www.w3.org/TR/REC-png-961001#CRCAppendix
@@ -101,10 +107,10 @@ def populate_crc_table() -> None:
     for n in range(256):
         c = n
         for k in range(8):
-            if (c & 1):  # n is even
-                c = 0xedb88320 ^ (c >> 1)
+            if ((c & 1) == 1):  # n is even
+                c = 0xedb88320 ^ ((c >> 1)&0x7FFFFFFF)
             else:
-                c >> 1
+                c = ((c >> 1)&0x7FFFFFFF)
         crc_table.append(c)
 
 def crc(inp_b: bytes) -> int:
@@ -112,11 +118,14 @@ def crc(inp_b: bytes) -> int:
     c = 0xffffffff
 
     for byte in inp_b:
-        c = crc_table[(c ^ byte) & 0xff] ^ (c >> 8)
+        c = crc_table[(c ^ byte) & 0xff] ^ ((c >> 8)&0xFFFFFF)
     return c ^ 0xffffffff
 
+print(crc("123456789".encode()))
+print(int.to_bytes(crc("123456789".encode()), 4, byteorder="big").hex())
 
 TEST_PNG = "./tests/files/seal.png"
+# SIGNED_PNG = "./tests/files/seal-sign-correct.png"
 with SealFile(TEST_PNG) as s_file:
     # seal_read_png(s_file)
 
@@ -124,7 +133,9 @@ with SealFile(TEST_PNG) as s_file:
     s_meta = SealMetadata(
         1,
         "rsa",
-        "***REMOVED***"
+        "***REMOVED***",
+        # b="F~S,s~s+4,s+8~f"
+          b="F~S,s~s+2,s+7~f"
     )
 
     seal_sign_png(s_file, 
@@ -155,4 +166,6 @@ with SealFile(TEST_PNG) as s_file:
                     H+9/qjDdTUOl1V+YEkWp3PAh3UUHODo0z7qKz/gia5gPTC3TJI0PGqRKKYpFJthF\
                     B4gDzF7IeUngPAIx65A1M6b+9mO+WkG/tepdJqmDmvj5ZEXf03o=",
                   "./tests/files/seal-sign.png")
+    print(s_file.r_file_path)
+    seal_read_png(s_file)
 
