@@ -6,7 +6,8 @@ from typing import List, Tuple, Optional as Opt, NamedTuple, Dict
 import warnings
 from seal_models import BytePos, SealBase64, SealByteRange
 from seal_meta import SealMetadata
-from seal_sign import sign_seal_local
+from seal_sign import sign_seal
+from seal_signer import SealSigner
 from seal_verify import verify_seal
 
 # Stores the positions and metadata for the SEAL entries
@@ -79,11 +80,11 @@ class SealFile():
             return (False, seal)  
         return (True, seal)
     
-    def sign_seal_meta(self, seal: SealMetadata, priv_key: SealBase64) -> SealMetadata:
+    def sign_seal_meta(self, seal: SealMetadata, signer: SealSigner) -> SealMetadata:
         # Fetch byte range:
         digest_bytes = self.fetch_byte_range(seal.b)
 
-        return sign_seal_local(seal, priv_key, digest_bytes)
+        return signer.sign(seal, digest_bytes)
 
 
     def insert_seal(self, head: bytes, seal: SealMetadata, foot: bytes, new_path: str = "", overwrite: bool = False):

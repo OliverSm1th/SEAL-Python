@@ -11,12 +11,20 @@ from seal_models import  (SealByteRange, SealSignature, SealSignatureFormat, Sea
 # Default Values:
 SEAL_DEF = 1
 
-KA_DEF = "rsa"
-KV_DEF = "1"
-DA_DEF = "sha256"
-B_DEF  = "F~S,s~f"
-UID_DEF= ""
-SF_DEF = "base64"
+# KA_DEF = "rsa"
+# KV_DEF = "1"
+# DA_DEF = "sha256"
+# B_DEF  = "F~S,s~f"
+# UID_DEF= ""
+# SF_DEF = "base64"
+DEF = {
+	"ka" : "rsa",
+	"kv" : "1",
+	"da" : "sha256",
+	"b"  : "F~S,s~f",
+	"uid": "",
+	"sf" : "base64"
+}
 
 # Structure of Cryto.Hash objects (i.e SHA256/512/1):
 class Hash(Protocol):
@@ -36,11 +44,11 @@ class SealSignData(NamedTuple):
 	d:	  str					# Domain Name
 
 	# Optional: (with default values)
-	ka:   KEY_ALGS_T = KA_DEF  	# Key Algorithm
-	kv:   str		 = KV_DEF	# Key Version
-	da:   DA_ALGS_T	 = DA_DEF	# Digest Algorithm
-	uid:  str		 = UID_DEF	# UUID/Date
-	sf:   str		 = SF_DEF	# Signature Format
+	ka:   KEY_ALGS_T = DEF['ka']  	# Key Algorithm
+	kv:   str		 = DEF['kv']	# Key Version
+	da:   DA_ALGS_T	 = DEF['da']	# Digest Algorithm
+	uid:  str		 = DEF['uid']	# UUID/Date
+	sf:   str		 = DEF['sf']	# Signature Format
 	#             (no default)
 	id:   		Opt[str] = None # Account identifier
 	copyright: 	Opt[str] = None	# Copyright information
@@ -72,9 +80,9 @@ class SealMetadata():
 
 	def __init__(self,	seal: int,			d:    str,
 			  
-			  			ka:	 KEY_ALGS_T	= KA_DEF,	kv: str = KV_DEF,		
-						da:  DA_ALGS_T	= DA_DEF,	b: 	str = B_DEF,
-						uid: str		= UID_DEF,	sf:	str = SF_DEF,
+			  			ka:	 KEY_ALGS_T	= DEF['ka'],	kv: str = DEF['kv'],		
+						da:  DA_ALGS_T	= DEF['da'],	b: 	str = DEF['b'],
+						uid: str		= DEF['uid'],	sf:	str = DEF['sf'],
 
 						id:   Opt[str]	=None,		copyright: 	Opt[str]=None,
 						info: Opt[str]	=None,		sl:			Opt[int]=None,
@@ -101,7 +109,7 @@ class SealMetadata():
 		self.sl   = sl  # (not implemented)
 	
 	@classmethod
-	def fromData(obj, data: SealSignData, seal: int = SEAL_DEF, byte_range: str = B_DEF, signature: Opt[str] = None) -> Self:
+	def fromData(obj, data: SealSignData, seal: int = SEAL_DEF, byte_range: str = DEF['b'], signature: Opt[str] = None) -> Self:
 		data_dict = data._asdict()
 		data_dict['seal'] = seal
 		data_dict['b']    = byte_range
@@ -203,6 +211,33 @@ class SealMetadata():
 	
 	def toWrapper(self) -> str:
 		return f"<seal {self.toEntry()}/>"
+	
+	def toDict(self) -> dict[str, str]:
+		attr_dict = self.__dict__
+		str_dict : dict[str, str] = {}
+		for key, value in attr_dict.items():
+			if value is not None:
+				
+				str_val = str(value)
+				if len(str_val) == 0: continue
+				if key in DEF and DEF[key] == str_val: continue
+				str_dict[key] = str_val
+		return str_dict
+	
+	def __str__(self) -> str:
+		options = []
+		attr_dict = self.toDict()
+		
+		attr_order = list(attr_dict.keys())
+		
+		attr_order.sort(key=lambda k: -1 if k == 'seal' else 99999 if k == 's' else len(str(attr_dict[k])))
+
+		for attr in attr_order:
+			str_val = format_str(attr_dict[attr])
+			
+			options.append(attr + "=" + str_val)
+		return ' '.join(options)
+	
 
 	@staticmethod
 	def get_offsets(seal_str: str, d_digest: bool = False) -> Tuple[int, int]:
@@ -228,21 +263,4 @@ class SealMetadata():
 			S += seal_str[S:s].rfind(':') + 1
 		return (S, s)
 	
-	def __str__(self) -> str:
-		options = []
-		attr_dict = self.__dict__
-		
-		attr_order = list(attr_dict.keys())
-		
-		attr_order.sort(key=lambda k: -1 if k == 'seal' else 99999 if k == 's' else len(str(attr_dict[k])))
-
-		for attr in attr_order:
-			if attr_dict[attr] == None:
-				continue
-			else:
-				str_val = str(attr_dict[attr])
-				if len(str_val) == 0: continue
-				str_val = format_str(str_val)
 			
-			options.append(attr + "=" + str_val)
-		return ' '.join(options)

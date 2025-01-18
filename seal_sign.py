@@ -1,9 +1,10 @@
 from datetime import datetime
 from seal_meta import SealMetadata
-from seal_models import SealBase64, SealSignature
+from seal_models import SealBase64
+from seal_signer import SealSigner
 
 
-def sign_seal_local(s_meta: SealMetadata, private_key: SealBase64, digest_bytes: bytes) -> SealMetadata:
+def sign_seal(s_meta: SealMetadata, signer: SealSigner, digest_bytes: bytes) -> SealMetadata:
     date = None
 
     digest = s_meta.da_hash(digest_bytes)
@@ -20,7 +21,7 @@ def sign_seal_local(s_meta: SealMetadata, private_key: SealBase64, digest_bytes:
         digest2 = head.encode() + digest1
         digest = digest.new(digest2)
 
-    signature = s_meta.ka_encrypt(private_key, digest)
+    signature = signer._generate_signature(s_meta, digest.digest())
     s_meta.set_signature(signature, date)
 
     return s_meta
