@@ -19,6 +19,7 @@ def verify_seal(s_meta: SealMetadata, digest_bytes: bytes):
             head = s_meta.s.date_str() + ":" + head
         digest2 = head.encode() + digest1
         digest = digest.new(digest2)
+        
 
     # Retrieve the public key from the DNS entry
     seal_dns_arr = get_seal_dns(s_meta.d)

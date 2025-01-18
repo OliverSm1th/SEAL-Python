@@ -121,26 +121,23 @@ def crc(inp_b: bytes) -> int:
         c = crc_table[(c ^ byte) & 0xff] ^ ((c >> 8)&0xFFFFFF)
     return c ^ 0xffffffff
 
-TEST_PNG = "../tests/valid3.png"
+TEST_PNG = "../tests/valid4.png"
 with SealFile(TEST_PNG) as s_file:
     seal_read_png(s_file)
 
 
-# SIGNED_PNG = "./tests/files/seal-sign-correct.png"
+# TEST_PNG = "./tests/seal.png"
 # with SealFile(TEST_PNG) as s_file:
 #     # seal_read_png(s_file)
 
-
-#     s_meta = SealMetadata(
-#         1,
-#         "rsa",
+#     s_data = SealSignData(
 #         "***REMOVED***",
-#         # b="F~S,s~s+4,s+8~f"
-#           b="F~S,s~s+2,s+7~f"
+#         sf="date:HEX",
+#         id="***REMOVED***"
 #     )
 
 #     seal_sign_png(s_file, 
-#                   s_meta,
+#                   s_data,
 #                   "MIIEogIBAAKCAQEAspKfzW955TEnslAoFqwl6kEZxRphmWC7JC5uUJNXjdR7ECX2\
 #                     rN3aC2WUf89yoE7Wwu8cOmH2QU4uWtA4BFGfETtRORRhsTyGjFRYBDM7uFZDIZ5O\
 #                     tIGqlqq+L6fqsojTpm5ZDnWFFSCWSYSSO1RCZ/iU+IOOoLCNoFJJHbjWrG+pP7Pv\
@@ -166,7 +163,6 @@ with SealFile(TEST_PNG) as s_file:
 #                     imChAoGAP4ha1dLRtKk8p70/GfvM2c3WMD4UitbXG80h8dXiyaxB5sgeFVF2HprM\
 #                     H+9/qjDdTUOl1V+YEkWp3PAh3UUHODo0z7qKz/gia5gPTC3TJI0PGqRKKYpFJthF\
 #                     B4gDzF7IeUngPAIx65A1M6b+9mO+WkG/tepdJqmDmvj5ZEXf03o=",
-#                   "./tests/files/seal-sign.png")
-#     print(s_file.r_file_path)
+#                   "./tests/seal-sign.png")
 #     seal_read_png(s_file)
 

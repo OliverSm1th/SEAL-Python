@@ -178,11 +178,11 @@ class SealSignatureFormat:
 			raise ValueError("Signature format must be of form 'date[0-9]:format' or 'format'")
 
 		if sep_num == 1:  # Includes a date specifier
-			[date_format, sig_str] = sf.split(':')
-			if not(re.match("^date[0-9]?$", date_format)):
+			[sig_d, sig_str] = sf.split(':')
+			if not(re.match("^date[0-9]?$", sig_d)):
 				raise ValueError("Invalid date format, should be of the form: 'date[0-9]'")
-			
-			self.date_format = cast(int, date_format[4]) if len(date_format) == 5 else 0
+
+			self.date_format = int(sig_d[4]) if len(sig_d) == 5 else 0
 
 		if not sig_str in SIG_FORMATS:
 			raise ValueError("Invalid signature format, should be one of: 'hex', 'HEX', 'base64', 'bin'")
@@ -204,6 +204,10 @@ class SealSignatureFormat:
 			# date1=YYYYMMDDhhmmss.x   (16)
 			# date2=YYYYMMDDhhmmss.xx  (17) etc
 			return 14 + 1 + self.date_format
+
+	def format_date(self, date: datetime) -> str:
+		date_s = date.strftime("%Y%m%d%H%M%S.%f")
+		return date_s[:self.date_len()]
 
 	def date_f_str(self):  # String representation of the date format (for errors)
 		# date =YYYYMMDDhhmmss
@@ -265,11 +269,7 @@ class SealSignature():
 		return obj(sf, sig_b, sig_date)
 
 	def date_str(self) -> str:
-		if self.date is None: return ""
-		sig_date_s = self.date.strftime("%Y%m%d%H%M%S.%f")
-		if self.sf.date_format is None or self.sf.date_format == 0:
-			sig_date_s = sig_date_s[:self.sf.date_len()]
-		return sig_date_s
+		return self.sf.format_date(self.date)
 	
 	def __str__(self) -> str:
 		match self.sf.signature_format:

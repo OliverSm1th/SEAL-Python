@@ -1,4 +1,5 @@
 from collections import namedtuple
+from datetime import datetime
 import re
 from typing import NamedTuple, Optional as Opt,Any, Self, Protocol, Tuple, cast, get_type_hints
 from Crypto.Hash import SHA256, SHA512, SHA1
@@ -11,7 +12,7 @@ from seal_models import  (SealByteRange, SealSignature, SealSignatureFormat, Sea
 SEAL_DEF = 1
 
 KA_DEF = "rsa"
-KV_DEF = "1",
+KV_DEF = "1"
 DA_DEF = "sha256"
 B_DEF  = "F~S,s~f"
 UID_DEF= ""
@@ -93,7 +94,7 @@ class SealMetadata():
 		self.b    = SealByteRange(b)
 		self.uid  = SealUID(uid)
 		self.sf   = SealSignatureFormat(sf)
-		self.s    =	SealSignature.fromStr(self.sf, s)
+		self.s    =	SealSignature.fromStr(self.sf, s) if s is not None else s
 		self.id   = id
 		self.copyright = copyright
 		self.info = info
@@ -101,7 +102,7 @@ class SealMetadata():
 	
 	@classmethod
 	def fromData(obj, data: SealSignData, seal: int = SEAL_DEF, byte_range: str = B_DEF, signature: Opt[str] = None) -> Self:
-		data_dict = data.__dict__
+		data_dict = data._asdict()
 		data_dict['seal'] = seal
 		data_dict['b']    = byte_range
 		data_dict['s']    = signature
@@ -139,11 +140,8 @@ class SealMetadata():
 			if not key in meta_dict: raise ValueError(f"Missing {meta_dict[key]} ({key})")
 		return obj(**meta_dict)
 	
-	def set_signature(self, s: str|bytes):
-		if isinstance(s, str):
-			self.s = SealSignature.fromStr(self.sf, s)
-		else:
-			self.s = SealSignature(self.sf, s)
+	def set_signature(self, sig_b: bytes, sig_d: Opt[datetime]):
+		self.s = SealSignature(self.sf, sig_b, sig_d)
 		
 
 	def da_hash(self, file_bytes: bytes) -> Hash:
