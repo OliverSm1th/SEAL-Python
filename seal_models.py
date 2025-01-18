@@ -74,7 +74,7 @@ class SealByteRange:
 		self.byte_range = self._get_range(byte_range)	
 
 	@staticmethod
-	def _get_range(str_byte_range: str) -> List[Tuple[BytePos, BytePos]]:
+	def _get_range(str_byte_range: str) -> List[Tuple[BytePos, BytePos]]:  # TODO: Merge to init?
 		values : List[Tuple[BytePos, BytePos]] = []
 
 		positions: List[BytePos] = [] 
@@ -101,7 +101,7 @@ class SealByteRange:
 			arr.extend(range)
 		return arr
 	
-	def overlaps(a, b: Self) -> bool:
+	def overlaps(a, b: Self) -> bool:  # TODO: Remove?
 		a_arr = a._flatten()
 		b_arr = b._flatten()
 		a_i = 0
@@ -142,6 +142,14 @@ class SealByteRange:
 				return True
 		return False
 
+	def check(self, isFirst: bool = True):
+		if isFirst:
+			if not(self.includes_lit('F')):
+				warnings.warn(f"Digest byte range starts at: \'{self.str_start()}\', should be \'F\' for full coverage")
+		else:
+			if not(self.includes_lit('F') or self.includes_lit('P')):
+				warnings.warn(f"Digest byte range starts at: \'{self.str_start()}\', should be \'F\' or \'P\' for full coverage")
+
 	def str_start(self) -> str:
 		return str(self.byte_range[0][0])
 	
@@ -150,11 +158,10 @@ class SealByteRange:
 
 	def __str__(self) -> str:
 		return self.str_byte_range
-	
 
-class SealSignature(NamedTuple):
-	sig_b: bytes
-	sig_d: Opt[datetime] = None
+# class SealSignature(NamedTuple):  
+# 	sig_b: bytes
+# 	sig_d: Opt[datetime] = None
 
 
 SIG_FORMATS_T = Lit["hex", "HEX", "base64", "bin"]
@@ -170,7 +177,7 @@ class SealSignatureFormat:
 		if(sep_num > 1 or sep_num < 0):
 			raise ValueError("Signature format must be of form 'date[0-9]:format' or 'format'")
 
-		if(sep_num == 1):  # Includes a date specifier
+		if sep_num == 1:  # Includes a date specifier
 			[date_format, sig_str] = sf.split(':')
 			if not(re.match("^date[0-9]?$", date_format)):
 				raise ValueError("Invalid date format, should be of the form: 'date[0-9]'")
@@ -180,88 +187,104 @@ class SealSignatureFormat:
 		if not sig_str in SIG_FORMATS:
 			raise ValueError("Invalid signature format, should be one of: 'hex', 'HEX', 'base64', 'bin'")
 		self.signature_format = cast(SIG_FORMATS_T, sig_str)
-	
-	def sig_bytes(self, s: str) -> bytes:
-		sf = self.signature_format
-		if sf == "base64":
-			no_pad = re.sub('[\\s]+$', '', s)
-			return b64_to_bytes(no_pad)
-		elif sf == "bin":
-			if not(re.match("^[01]+$", s)): 
-				raise ValueError("Invalid binary signature, must only contain 0 or 1")
-			return int(s, 2).to_bytes((len(s)+7)//8)  # From https://stackoverflow.com/a/32676625
-		elif sf.lower() == "hex":
-			m = "a-f" if sf == "hex" else "A-F"
-			if not(re.match(f"^[0-9{m}]+$", s)):
-				raise ValueError(f"Invalid hex signature, must only contain the following characters: [0-9{m}]")
-			if len(s)%4 != 0:
-				raise ValueError(f"Invalid hex signature, must be a two-byte hex (len divisible by 4)")
-			return bytes.fromhex(s.upper())
-		return bytes()
-	
-	def sig_str(self, b: bytes) -> str:
-		sf = self.signature_format
-		if sf == "base64":
-			return base64.b64encode(b).decode('ascii')
-		elif sf=="bin":
-			return bin(int.from_bytes(b))[2:]
-		elif sf in ["hex", "HEX"]:
-			hex = b.hex()
-			return hex if sf == "hex" else hex.upper()
-		return ""
-	
-	def date_f_str(self):  # Date format string (for errors)
-		# YYYYMMDDhhmmss.[date_format]
-		return "YYYYMMDDhhmmss"+ ("."+"f"*self.date_format if self.date_format>0 else "")
-
-	def date_len(self):
-		if self.date_format is None or self.date_format <= 0:
-			return 14
-		else:
-			return 14 + 1 + self.date_format
-
-
-	def construct_sig(self, s:str) -> SealSignature:
-		sig_str = s
-		sig_date = None
-		if self.date_format is not None:
-			if s.count(':') != 1:
-				raise ValueError("Invalid signature, does not match signature format (date:signature)")
-			[date_str, sig_str] = s.split(':')
-						
-			date_len = self.date_len()
-
-			if len(date_str) != date_len or (self.date_format > 0 and s[14] != '.'):
-				raise ValueError(f"Invalid signature, date does not match the expected format: {self.date_f_str()}")
-			
-			date_long = date_str + ('.' if self.date_format == 0 else '')
-			date_long = date_long.ljust(21, '0')  # 14 + 1 + 6
-			try:
-				sig_date = datetime.strptime(date_long, "%Y%m%d%H%M%S.%f")
-			except ValueError as e:
-				if "does not match format" in str(e):
-					raise ValueError(f"Invalid signature, date \'{date_str}\' does not match the expected format: {self.date_f_str()}")
-				else: raise e
-
-		sig_b = self.sig_bytes(sig_str)
-
-		return SealSignature(sig_b, sig_date)
-
-	def convert_sig(self, sig: SealSignature) -> str:
-		sig_str = self.sig_str(sig.sig_b)
-		if sig.sig_d is not None:
-			sig_date_s = sig.sig_d.strftime("%Y%m%d%H%M%S.%f")
-			if self.date_format is None or self.date_format == 0:
-				sig_date_s = sig_date_s[:self.date_len()]
-			sig_str = sig_date_s + ":" + sig_str
-		return sig_str
-
+		
 	def __str__(self) -> str:
 		output = ""
 		if(self.date_format != None):
 			output += "date"+str(self.date_format)+":"
 		output += self.signature_format
 		return output
+
+	# Helper functions:
+	def date_len(self):  # Length of the date component
+		if self.date_format is None or self.date_format <= 0:
+			# date =YYYYMMDDhhmmss     (14)
+			return 14	
+		else:
+			# date1=YYYYMMDDhhmmss.x   (16)
+			# date2=YYYYMMDDhhmmss.xx  (17) etc
+			return 14 + 1 + self.date_format
+
+	def date_f_str(self):  # String representation of the date format (for errors)
+		# date =YYYYMMDDhhmmss
+		# date1=YYYYMMDDhhmmss.f  etc
+		return "YYYYMMDDhhmmss"+ ("."+"f"*self.date_format if self.date_format>0 else "")
+
+class SealSignature():
+	sig_b: bytes		# Binary representation of the signature component 
+	date: Opt[datetime]	# Datetime representation of the date component
+	sf: SealSignatureFormat  # Format used
+
+	def __init__(self, sf: SealSignatureFormat, sig_b: bytes, date: Opt[datetime] = None):
+		self.sf = sf
+		self.sig_b = sig_b
+		self.date  = date
+	
+	@classmethod
+	def fromStr(obj, sf: SealSignatureFormat, str: str):
+		sig_str  = str
+		sig_date = None
+		# Parse the date
+		if sf.date_format is not None:
+			if sig_str.count(':') != 1:  raise ValueError("Invalid signature, does not match signature format (date:signature)")
+			[date_str, sig_str] = str.split(':')
+			
+			if len(date_str) != sf.date_len() or (sf.date_format > 0 and date_str[14] != '.'):
+				raise ValueError(f"Invalid signature, date does not match the expected format: {sf.date_f_str()}")
+			
+			# Prepare for parsing
+			date_long = date_str + ('.' if sf.date_format == 0 else '')
+			date_long = date_long.ljust(21, '0')  # 14 + 1 + 6
+			try:
+				sig_date = datetime.strptime(date_long, "%Y%m%d%H%M%S.%f")
+			except ValueError as e:
+				if "does not match format" in str(e):
+					raise ValueError(f"Invalid signature, date \'{date_str}\' does not match the expected format: {sf.date_f_str()}")
+				else: raise e
+		elif str.count(':') > 0:
+			raise ValueError("Invalid signature, does not match signature format (signature only)")
+		
+		# Parse the signature itself
+		match sf.signature_format:
+			case 'base64':
+				no_pad = re.sub('[\\s]+$', '', sig_str)
+				sig_b = b64_to_bytes(no_pad)
+			case 'bin':
+				if not(re.match("^[01]+$", sig_str)): 
+					raise ValueError("Invalid binary signature, must only contain 0 or 1")
+				sig_b = int(sig_str, 2).to_bytes((len(sig_str)+7)//8)  # From https://stackoverflow.com/a/32676625
+			case 'hex' | 'HEX':
+				m = "a-f" if sf.signature_format == "hex" else "A-F"
+				if not(re.match(f"^[0-9{m}]+$", sig_str)):
+					raise ValueError(f"Invalid hex signature, must only contain the following characters: [0-9{m}]")
+				if len(sig_str)%4 != 0:
+					raise ValueError(f"Invalid hex signature, must be a two-byte hex (len divisible by 4)")
+				sig_b = bytes.fromhex(sig_str.upper())
+			case _:
+				sig_b = bytes()
+		return obj(sf, sig_b, sig_date)
+
+	def date_str(self) -> str:
+		if self.date is None: return ""
+		sig_date_s = self.date.strftime("%Y%m%d%H%M%S.%f")
+		if self.sf.date_format is None or self.sf.date_format == 0:
+			sig_date_s = sig_date_s[:self.sf.date_len()]
+		return sig_date_s
+	
+	def __str__(self) -> str:
+		match self.sf.signature_format:
+			case 'base64':
+				sig_str = base64.b64encode(self.sig_b).decode('ascii')
+			case 'bin':
+				sig_str = bin(int.from_bytes(self.sig_b))[2:]
+			case 'hex':
+				sig_str = self.sig_b.hex()
+			case 'HEX':
+				sig_str = self.sig_b.hex().upper()
+			case _:
+				return ""
+		if self.date is None: return sig_str
+		return self.date_str() + ":" + sig_str
 	
 
 class SealKeyVersion:

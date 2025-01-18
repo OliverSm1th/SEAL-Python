@@ -121,7 +121,7 @@ def crc(inp_b: bytes) -> int:
         c = crc_table[(c ^ byte) & 0xff] ^ ((c >> 8)&0xFFFFFF)
     return c ^ 0xffffffff
 
-TEST_PNG = "../tests/valid2.png"
+TEST_PNG = "../tests/valid3.png"
 with SealFile(TEST_PNG) as s_file:
     seal_read_png(s_file)
 

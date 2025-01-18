@@ -93,7 +93,7 @@ class SealMetadata():
 		self.b    = SealByteRange(b)
 		self.uid  = SealUID(uid)
 		self.sf   = SealSignatureFormat(sf)
-		self.s    =	self.sf.construct_sig(s) if s is not None else s
+		self.s    =	SealSignature.fromStr(self.sf, s)
 		self.id   = id
 		self.copyright = copyright
 		self.info = info
@@ -141,9 +141,9 @@ class SealMetadata():
 	
 	def set_signature(self, s: str|bytes):
 		if isinstance(s, str):
-			self.s = self.sf.construct_sig(s)
+			self.s = SealSignature.fromStr(self.sf, s)
 		else:
-			self.s = SealSignature(s)
+			self.s = SealSignature(self.sf, s)
 		
 
 	def da_hash(self, file_bytes: bytes) -> Hash:
@@ -239,9 +239,7 @@ class SealMetadata():
 		attr_order.sort(key=lambda k: -1 if k == 'seal' else 99999 if k == 's' else len(str(attr_dict[k])))
 
 		for attr in attr_order:
-			if attr == 's':
-				str_val = self.sf.convert_sig(self.s) if self.s is not None else "[None]"
-			elif attr_dict[attr] == None:
+			if attr_dict[attr] == None:
 				continue
 			else:
 				str_val = str(attr_dict[attr])

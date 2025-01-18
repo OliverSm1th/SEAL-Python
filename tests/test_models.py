@@ -55,9 +55,10 @@ sig_tests = {
 }
 
 @pytest.mark.parametrize(["sf", "s", "is_valid"], convert_dict(sig_tests))
-def test_signature(sf: str, s: str, is_valid: bool):
+def test_signature(sf_str: str, s: str, is_valid: bool):
     try:
-        SealSignatureFormat(sf).construct_sig(s)
+        sf = SealSignatureFormat(sf_str)
+        SealSignature.fromStr(sf, s)
         assert is_valid, f"Expecting an exception"
     except ValueError as e:
         assert not is_valid, f"{e}"

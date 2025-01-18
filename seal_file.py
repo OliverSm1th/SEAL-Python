@@ -56,6 +56,11 @@ class SealFile():
         except ValueError as e:  
             warnings.warn(f"  Invalid SEAL structure- {str(e)}")
             return (False, None)
+        print(seal_str)
+
+        # Check the range is positioned correctly
+        isFirst = len(self.seal_arr) == 0
+        seal.b.check(isFirst)
     
         # Get signature start + end pos (S+s)
         (S, s) = SealMetadata.get_offsets(seal_str)
@@ -63,29 +68,16 @@ class SealFile():
 
         self.seal_arr.append(SealEntry(block_start + S, block_start + s,seal))
 
+        if self.is_finalised: raise ValueError(f"File is already finalised, cannot include any extra signatures")
+        digest_bytes = self.fetch_byte_range(seal.b)
+
         try:
-            self.verify_seal(seal)              # Throws ValueError if invalid
+            verify_seal(seal, digest_bytes)              # Throws ValueError if invalid
         except ValueError as e:
             warnings.warn(f"  Invalid SEAL- {str(e)}")
             self.seal_arr.pop()  # Remove invalid SEAL recordseal_num-1
             return (False, seal)  
         return (True, seal)
-
-    def verify_seal(self, seal: SealMetadata):
-        if self.is_finalised:
-            raise ValueError(f"File is already finalised, cannot include any extra signatures")
-        # Assumes SEAL records are ordered in increasing byte ranges:
-        if len(self.seal_arr) == 0:
-            if not(seal.b.includes_lit('F')):
-                warnings.warn(f"Digest byte range starts at: \'{seal.b.str_start()}\', should be \'F\' for full coverage")
-        else:
-            if not(seal.b.includes_lit('F') or seal.b.includes_lit('P')):
-                warnings.warn(f"Digest byte range starts at: \'{seal.b.str_start()}\', should be \'F\' or \'P\' for full coverage")
-        # Fetch byte range:
-        digest_bytes = self.fetch_byte_range(seal.b)
-
-        # Verify:
-        verify_seal(seal, digest_bytes)         # Throws ValueError if invalid  
     
     def sign_seal_meta(self, seal: SealMetadata, priv_key: SealBase64) -> SealMetadata:
         # Fetch byte range:
