@@ -1,4 +1,4 @@
-from seal_meta import SealMetadata
+from seal_meta import SealMetadata, SealSignData
 from seal_file import  SealFile
 from seal_models import SealBase64
 
@@ -7,27 +7,24 @@ from typing import List
 from io import BufferedReader as File
 
 
-def seal_sign_png(s_file: SealFile, seal: SealMetadata, priv_key: bytes|str, new_path: str):
+def seal_sign_png(s_file: SealFile, s_data: SealSignData, priv_key: bytes|str, new_path: str):
+    seal = SealMetadata.fromData(s_data, byte_range="F~S,s~s+2,s+7~f")
+
     # Scan the file for prior signatures
     s_file = seal_read_png(s_file)
     if s_file.is_finalised:  raise ValueError("File is already finalised")
     if not s_file.load_pos("IEND"): raise ValueError("File improperly formatted (missing IEND chunk)")
 
     # Generate the dummy signature
-    print("Generating dummy signature") 
     dummy_seal = s_file.sign_seal_meta(seal, SealBase64(priv_key))
-    print("   "+str(dummy_seal))
     dummy_chunk = generate_seal_chunk(dummy_seal.toWrapper().encode())
     S_i = s_file.insert_seal_block(dummy_chunk, dummy_seal, 8, new_path)
-    print("   Inserted into new file at: "+new_path)
 
     # Generate the real signature
-    print("Generating real signature")
     signed_seal = s_file.sign_seal_meta(seal, SealBase64(priv_key))
     print("   "+str(signed_seal))
     chunk_b = generate_seal_chunk(signed_seal.toWrapper().encode())
     s_file.insert_seal_block(chunk_b, signed_seal, 8, S_i=S_i)
-    print("   Updated file: "+new_path)
     s_file.reset()
 
 def seal_read_png(s_file: SealFile) -> SealFile:
@@ -65,7 +62,12 @@ def seal_read_png(s_file: SealFile) -> SealFile:
             result = s_file.read_txt_block(chunk_size)
             
             if result[1] is not None:
-                print("│ " + ('✓' if result[0] else '✕') + " " + result[1].__str__().split('s=')[0]+"s=...")
+                seal = result[1]
+                [pt1, sig] = seal.toWrapper().split("s=")
+                pt2 = sig.split(":")[0]+":..." if sig.count(':') > 0 else "..."
+                seal_str = pt1+"s="+pt2+"/>"
+
+                print("│ " + ('✓' if result[0] else '✕') + " " + seal_str)
         else:
             if chunk_type.lower() == "iend":  # For writing later
                 s_file.save_pos("IEND", -8)
@@ -92,11 +94,9 @@ def is_png(file: File) -> bool:
 
 def generate_seal_chunk(data_b: bytes) -> bytes:
     len_b = int.to_bytes(len(data_b), 4, byteorder="big")
-    print(len_b)
     type_b = bytes(map(ord, "sEAl"))
     chunk_crc = crc(type_b + data_b)
     chunk_b = len_b + type_b + data_b + int.to_bytes(chunk_crc, 4, byteorder="big")
-    print(chunk_crc)
     return chunk_b
 
 
@@ -121,51 +121,52 @@ def crc(inp_b: bytes) -> int:
         c = crc_table[(c ^ byte) & 0xff] ^ ((c >> 8)&0xFFFFFF)
     return c ^ 0xffffffff
 
-print(crc("123456789".encode()))
-print(int.to_bytes(crc("123456789".encode()), 4, byteorder="big").hex())
-
-TEST_PNG = "./tests/files/seal.png"
-# SIGNED_PNG = "./tests/files/seal-sign-correct.png"
+TEST_PNG = "../tests/valid2.png"
 with SealFile(TEST_PNG) as s_file:
-    # seal_read_png(s_file)
-
-
-    s_meta = SealMetadata(
-        1,
-        "rsa",
-        "***REMOVED***",
-        # b="F~S,s~s+4,s+8~f"
-          b="F~S,s~s+2,s+7~f"
-    )
-
-    seal_sign_png(s_file, 
-                  s_meta,
-                  "MIIEogIBAAKCAQEAspKfzW955TEnslAoFqwl6kEZxRphmWC7JC5uUJNXjdR7ECX2\
-                    rN3aC2WUf89yoE7Wwu8cOmH2QU4uWtA4BFGfETtRORRhsTyGjFRYBDM7uFZDIZ5O\
-                    tIGqlqq+L6fqsojTpm5ZDnWFFSCWSYSSO1RCZ/iU+IOOoLCNoFJJHbjWrG+pP7Pv\
-                    81qk7HOhOpXlKDYUD+ARVmXDPHzNrcaOXBk9NIdZV++SAQbm97bsKd2hf3G1BrES\
-                    1D9TOxc1JW/e3e91XcD6FvUEhdhFMCLaSTMi4vAHABmCScyDUPzPMBqadiNvOnu8\
-                    XPubWsWsO7o1vHdxwF7JcVgJATQJJ93Z7fmVtwIDAQABAoIBAAqzs4oPV+x+xqnu\
-                    wzL1/DZkJ77ioYjHUvqMdyYIaTiMdxefqX9GCHmjC9mhEss9Y6zpFvWqG0+3TMXl\
-                    MVuTkgc+rn56PzntA69IpWxoWaLm4JJqN2ilVhY+Lgm9yYNg+eDr6hXDa0dkiD09\
-                    tGSD3JBN8Iz4QsWp7xhK9it8LA7HbzT0mpWbuYqDor8+9O5YfcE0FmIw2w3Bt6nj\
-                    MKyyVrEYWFWppHsZzrU9utaw3tfhI3d9r3S9C2XT9L/0bT/wCr71HW4pJCvc4nT8\
-                    q4Gvd1VIZTLST25dcX0HJ/bZUsb39+3hF4YVIJUN/6uD0fqP0mbBiwtUs4moE6Oh\
-                    VNW8AaECgYEA8taA+dLD2+1vtU+lW7GJ+5wD2LM1/7UBACTvNmrdUpoeLkXJil79\
-                    ChOMOZz7tn6m7afuedcHEb6SVBisDORGBAQUV4k3qau2syhde1/JUQxg3B8BpW7E\
-                    Uv3Ui57cB75FtqohhSeJVcfkCFD13/nd0JWyCF8Fuk0yA3RlHizFy+cCgYEAvEBo\
-                    2chRJJQLrrkCpSUQErF8b3/uWhhvIX0YyioXN5219tGfiQHw4+JKoTqUsJ6MHpp0\
-                    MO+3hOOyDb8ammXGNQnRXtY5ehKHW89iF92YmFLOtQAbWBucSMIBgT9tLbGrQfLb\
-                    kapVnXHGt73Ij6hH627EtaFL7bGqNRVUEpygLbECgYBHF0j22h8AmYgkekaci2Mr\
-                    x8bQf9aFH4ZFdoqZUbutXPUM8t1HpvtJIePhUfXWvUk9NfZ4sNye8z1/ZSGpPILK\
-                    1i7mWYN0JpL77AtB/Q7ArXEFwAYJWl4bNbgtj7o2ghuCmFfr1WE9PaGiVaFFiq7H\
-                    S6utC7Rvj/3eSQr5RH47bQKBgHUZI5+EiWTVakbu8oRDf7IBEURSMbN9S3NrW0Y1\
-                    1GdWBOBZGIGi4XL/SijsRZ1vof1PWkMueduBvznpy+SKtjY7uy7g1rPmXqhvYbcy\
-                    sj7eE5JnVJsD4b0oYMNC7ujjgYHuTUJY0BS1t0SIGv+xT7tVFatdf9uFDjki4T8K\
-                    imChAoGAP4ha1dLRtKk8p70/GfvM2c3WMD4UitbXG80h8dXiyaxB5sgeFVF2HprM\
-                    H+9/qjDdTUOl1V+YEkWp3PAh3UUHODo0z7qKz/gia5gPTC3TJI0PGqRKKYpFJthF\
-                    B4gDzF7IeUngPAIx65A1M6b+9mO+WkG/tepdJqmDmvj5ZEXf03o=",
-                  "./tests/files/seal-sign.png")
-    print(s_file.r_file_path)
     seal_read_png(s_file)
+
+
+# SIGNED_PNG = "./tests/files/seal-sign-correct.png"
+# with SealFile(TEST_PNG) as s_file:
+#     # seal_read_png(s_file)
+
+
+#     s_meta = SealMetadata(
+#         1,
+#         "rsa",
+#         "***REMOVED***",
+#         # b="F~S,s~s+4,s+8~f"
+#           b="F~S,s~s+2,s+7~f"
+#     )
+
+#     seal_sign_png(s_file, 
+#                   s_meta,
+#                   "MIIEogIBAAKCAQEAspKfzW955TEnslAoFqwl6kEZxRphmWC7JC5uUJNXjdR7ECX2\
+#                     rN3aC2WUf89yoE7Wwu8cOmH2QU4uWtA4BFGfETtRORRhsTyGjFRYBDM7uFZDIZ5O\
+#                     tIGqlqq+L6fqsojTpm5ZDnWFFSCWSYSSO1RCZ/iU+IOOoLCNoFJJHbjWrG+pP7Pv\
+#                     81qk7HOhOpXlKDYUD+ARVmXDPHzNrcaOXBk9NIdZV++SAQbm97bsKd2hf3G1BrES\
+#                     1D9TOxc1JW/e3e91XcD6FvUEhdhFMCLaSTMi4vAHABmCScyDUPzPMBqadiNvOnu8\
+#                     XPubWsWsO7o1vHdxwF7JcVgJATQJJ93Z7fmVtwIDAQABAoIBAAqzs4oPV+x+xqnu\
+#                     wzL1/DZkJ77ioYjHUvqMdyYIaTiMdxefqX9GCHmjC9mhEss9Y6zpFvWqG0+3TMXl\
+#                     MVuTkgc+rn56PzntA69IpWxoWaLm4JJqN2ilVhY+Lgm9yYNg+eDr6hXDa0dkiD09\
+#                     tGSD3JBN8Iz4QsWp7xhK9it8LA7HbzT0mpWbuYqDor8+9O5YfcE0FmIw2w3Bt6nj\
+#                     MKyyVrEYWFWppHsZzrU9utaw3tfhI3d9r3S9C2XT9L/0bT/wCr71HW4pJCvc4nT8\
+#                     q4Gvd1VIZTLST25dcX0HJ/bZUsb39+3hF4YVIJUN/6uD0fqP0mbBiwtUs4moE6Oh\
+#                     VNW8AaECgYEA8taA+dLD2+1vtU+lW7GJ+5wD2LM1/7UBACTvNmrdUpoeLkXJil79\
+#                     ChOMOZz7tn6m7afuedcHEb6SVBisDORGBAQUV4k3qau2syhde1/JUQxg3B8BpW7E\
+#                     Uv3Ui57cB75FtqohhSeJVcfkCFD13/nd0JWyCF8Fuk0yA3RlHizFy+cCgYEAvEBo\
+#                     2chRJJQLrrkCpSUQErF8b3/uWhhvIX0YyioXN5219tGfiQHw4+JKoTqUsJ6MHpp0\
+#                     MO+3hOOyDb8ammXGNQnRXtY5ehKHW89iF92YmFLOtQAbWBucSMIBgT9tLbGrQfLb\
+#                     kapVnXHGt73Ij6hH627EtaFL7bGqNRVUEpygLbECgYBHF0j22h8AmYgkekaci2Mr\
+#                     x8bQf9aFH4ZFdoqZUbutXPUM8t1HpvtJIePhUfXWvUk9NfZ4sNye8z1/ZSGpPILK\
+#                     1i7mWYN0JpL77AtB/Q7ArXEFwAYJWl4bNbgtj7o2ghuCmFfr1WE9PaGiVaFFiq7H\
+#                     S6utC7Rvj/3eSQr5RH47bQKBgHUZI5+EiWTVakbu8oRDf7IBEURSMbN9S3NrW0Y1\
+#                     1GdWBOBZGIGi4XL/SijsRZ1vof1PWkMueduBvznpy+SKtjY7uy7g1rPmXqhvYbcy\
+#                     sj7eE5JnVJsD4b0oYMNC7ujjgYHuTUJY0BS1t0SIGv+xT7tVFatdf9uFDjki4T8K\
+#                     imChAoGAP4ha1dLRtKk8p70/GfvM2c3WMD4UitbXG80h8dXiyaxB5sgeFVF2HprM\
+#                     H+9/qjDdTUOl1V+YEkWp3PAh3UUHODo0z7qKz/gia5gPTC3TJI0PGqRKKYpFJthF\
+#                     B4gDzF7IeUngPAIx65A1M6b+9mO+WkG/tepdJqmDmvj5ZEXf03o=",
+#                   "./tests/files/seal-sign.png")
+#     print(s_file.r_file_path)
+#     seal_read_png(s_file)
 

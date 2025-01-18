@@ -1,12 +1,21 @@
+from collections import namedtuple
 import re
-from typing import Optional as Opt,Any, Protocol, Tuple, cast, get_type_hints
-from typing_extensions import Self
+from typing import NamedTuple, Optional as Opt,Any, Self, Protocol, Tuple, cast, get_type_hints
 from Crypto.Hash import SHA256, SHA512, SHA1
 import Crypto.PublicKey.RSA as RSA
 from Crypto.Signature import pkcs1_15
 from seal_models import  (SealByteRange, SealSignature, SealSignatureFormat, SealKeyVersion, SealUID, SealBase64,
 						  KEY_ALGS_T, KEY_ALGS, DA_ALGS_T, DA_ALGS, get_fields, clean_str, format_str)
 
+# Default Values:
+SEAL_DEF = 1
+
+KA_DEF = "rsa"
+KV_DEF = "1",
+DA_DEF = "sha256"
+B_DEF  = "F~S,s~f"
+UID_DEF= ""
+SF_DEF = "base64"
 
 # Structure of Cryto.Hash objects (i.e SHA256/512/1):
 class Hash(Protocol):
@@ -20,33 +29,56 @@ class Hash(Protocol):
 	def new(self,data=None) -> Self: ...
 	def update(self,data:bytes|bytearray|memoryview) -> None: ...
 
-class SealMetadata():
+class SealSignData(NamedTuple):
+	"""All data provided by the user for signing"""
 	# Required:
-	seal: int					# SEAL Version
-	ka:   KEY_ALGS_T   			# Key Algorithm
 	d:	  str					# Domain Name
 
-	# Required for verification, generated while signing
-	s:    Opt[SealSignature]    # Signature	
+	# Optional: (with default values)
+	ka:   KEY_ALGS_T = KA_DEF  	# Key Algorithm
+	kv:   str		 = KV_DEF	# Key Version
+	da:   DA_ALGS_T	 = DA_DEF	# Digest Algorithm
+	uid:  str		 = UID_DEF	# UUID/Date
+	sf:   str		 = SF_DEF	# Signature Format
+	#             (no default)
+	id:   		Opt[str] = None # Account identifier
+	copyright: 	Opt[str] = None	# Copyright information
+	info: 		Opt[str] = None	# Textual comment information
+	sl:   		Opt[int] = None	# Signature Length (not implemented)
+
+
+class SealMetadata():
+	# Required:
+	seal: int					# SEAL Version		(!)
+	d:	  str					# Domain Name
 
 	# Optional:  (with default values)
+	ka:   KEY_ALGS_T   			# Key Algorithm
 	kv:   SealKeyVersion		# Key Version
 	da:   DA_ALGS_T				# Digest Algorithm
-	b:    SealByteRange	 		# Digest Byte Range
+	b:    SealByteRange	 		# Digest Byte Range	(!)
 	uid:  SealUID				# UUID/Date
 	sf:   SealSignatureFormat	# Signature Format
 	#             (no default)
-	id:   Opt[str]  			# Account identifier
-	copyright: Opt[str]			# Copyright information
-	info: Opt[str]				# Textual comment information
-	sl:   Opt[int] 				# Signature Length (not implemented)
+	id:   		Opt[str]  		# Account identifier
+	copyright: 	Opt[str]		# Copyright information
+	info: 		Opt[str]		# Textual comment information
+	sl:   		Opt[int] 		# Signature Length (not implemented)
 
-	def __init__(self,	seal: int,			ka:  KEY_ALGS_T,	d:    str,
-			  			kv:  str="1",		da: DA_ALGS_T='sha256',
-						b:    str="F~S,s~f",uid: str="",		sf: str      ='base64',
-						s:    Opt[str]=None,
-						id:   Opt[str]=None,		copyright: 	Opt[str]=None,
-						info: Opt[str]=None,		sl:			Opt[int]=None):
+	# Required for verification, generated while signing
+	s:    Opt[SealSignature]    # Signature			(!)
+
+
+	def __init__(self,	seal: int,			d:    str,
+			  
+			  			ka:	 KEY_ALGS_T	= KA_DEF,	kv: str = KV_DEF,		
+						da:  DA_ALGS_T	= DA_DEF,	b: 	str = B_DEF,
+						uid: str		= UID_DEF,	sf:	str = SF_DEF,
+
+						id:   Opt[str]	=None,		copyright: 	Opt[str]=None,
+						info: Opt[str]	=None,		sl:			Opt[int]=None,
+						
+						s:    Opt[str]	=None	):
 		self.seal = seal
 		
 		if ka in KEY_ALGS:  self.ka = cast(KEY_ALGS_T, ka)
@@ -66,6 +98,14 @@ class SealMetadata():
 		self.copyright = copyright
 		self.info = info
 		self.sl   = sl  # (not implemented)
+	
+	@classmethod
+	def fromData(obj, data: SealSignData, seal: int = SEAL_DEF, byte_range: str = B_DEF, signature: Opt[str] = None) -> Self:
+		data_dict = data.__dict__
+		data_dict['seal'] = seal
+		data_dict['b']    = byte_range
+		data_dict['s']    = signature
+		return obj(**data_dict)
 
 	@classmethod
 	def fromWrapper(obj, wrap_str: str) -> Self:
@@ -97,7 +137,6 @@ class SealMetadata():
 		required = {'seal': 'SEAL version', 'ka': 'Key Algorithm', 's': 'signature', 'd': 'domain name'}
 		for key in required:
 			if not key in meta_dict: raise ValueError(f"Missing {meta_dict[key]} ({key})")
-
 		return obj(**meta_dict)
 	
 	def set_signature(self, s: str|bytes):
@@ -168,13 +207,27 @@ class SealMetadata():
 		return f"<seal {self.toEntry()}/>"
 
 	@staticmethod
-	def get_offsets(seal_str: str) -> Tuple[int, int]:
+	def get_offsets(seal_str: str, d_digest: bool = False) -> Tuple[int, int]:
+		"""Get the start and end position of the signature excluding any quotation marks
+		i.e: <seal...s="~sig~"/>   (~ = S,s)
+
+		Args:
+			seal_str (str) \n
+			d_digest (bool): 
+				True = Exclude any date or user from the signature range  i.e: <seal...s="date:user:~sig~"/>
+				False = Include them in the signature range i.e: <seal...s="~date:user:sig~"/>
+
+		Returns:
+			Tuple[int, int]: _description_
+		"""
 		S = seal_str.index(" s=") + 3
+		
 		s = len(seal_str) - 2
-		print(seal_str[S])
-		print(seal_str[s])
 		if seal_str[S] == seal_str[s-1] and seal_str[S] in ['\'', '\"']:  
 			S += 1; s -= 1
+		
+		if seal_str[S:s].count(':') > 0 and d_digest:	# Move signature start past date + user:    date:user:_sig
+			S += seal_str[S:s].rfind(':') + 1
 		return (S, s)
 	
 	def __str__(self) -> str:

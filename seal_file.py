@@ -51,7 +51,6 @@ class SealFile():
         
         
     def read_seal_str(self, seal_str: str, block_start: int) -> Tuple[bool, Opt[SealMetadata]]:
-        print("Read seal str from: "+self.r_file_path)
         try:
             seal = SealMetadata.fromWrapper(seal_str)    # Throws ValueError if improperly structured
         except ValueError as e:  
@@ -60,6 +59,7 @@ class SealFile():
     
         # Get signature start + end pos (S+s)
         (S, s) = SealMetadata.get_offsets(seal_str)
+        # print(f"({S}:{s}) {seal_str[S:s]}")
 
         self.seal_arr.append(SealEntry(block_start + S, block_start + s,seal))
 
@@ -81,8 +81,6 @@ class SealFile():
         else:
             if not(seal.b.includes_lit('F') or seal.b.includes_lit('P')):
                 warnings.warn(f"Digest byte range starts at: \'{seal.b.str_start()}\', should be \'F\' or \'P\' for full coverage")
-
-        print("Fetching range for verification")
         # Fetch byte range:
         digest_bytes = self.fetch_byte_range(seal.b)
 
@@ -118,9 +116,7 @@ class SealFile():
             overwrite = False    
 
         # Add the data to the file
-        print(f"---Adding seal data to the file: {new_path}")
         self.insert(data_b, new_path, overwrite)
-        print("---Finished Adding")
         
         # Add the seal metadata to seal_arr
         seal_str = seal.toWrapper()
@@ -151,7 +147,6 @@ class SealFile():
         """
         # https://stackoverflow.com/questions/18838919/append-to-a-file-after-nth-byte-in-python
         cur_pos = self.r_file.tell()
-        print(f"Cur_pos: {cur_pos}")
         self.r_file.seek(0,0)   # Move to start
 
         
@@ -216,20 +211,18 @@ class SealFile():
             S_i = prev_pos
 
         for (start, end) in br.byte_range:
-            print(f"({start}, {end})")
             start_pos = self._file_pos(start, S_i, write_block)
             end_pos   = self._file_pos(end,   S_i, write_block)
-            # print(f"{start_pos} -> {end_pos}")
             self.r_file.seek(start_pos, 0 if start_pos>=0 else 2) # 0 = From Start, 2 = From End
             if end_pos >= 0:    # Read up to the required position
                 result = self.r_file.read(end_pos-start_pos)
             else:               # Read the rest of the file + remove the required offset
                 result = self.r_file.read(-1)
                 result[:end_pos+1]
-            if len(result) < 10:
-                print(f"({start_pos!r}:{end_pos!r}){result!r}")
-            else:
-                print(f"({start_pos!r}:{end_pos!r})\"{result[:8]!r}...{result[-8:]!r}")
+            # if len(result) < 10:
+            #     print(f"({start_pos!r}:{end_pos!r}){result!r}")
+            # else:
+            #     print(f"({start_pos!r}:{end_pos!r})\"{result[:8]!r}...{result[-8:]!r}")
             digest_bytes += result
         self.r_file.seek(prev_pos, 0)
         

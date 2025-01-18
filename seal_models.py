@@ -253,7 +253,7 @@ class SealSignatureFormat:
 			sig_date_s = sig.sig_d.strftime("%Y%m%d%H%M%S.%f")
 			if self.date_format is None or self.date_format == 0:
 				sig_date_s = sig_date_s[:self.date_len()]
-			sig_str = sig_date_s + sig_str
+			sig_str = sig_date_s + ":" + sig_str
 		return sig_str
 
 	def __str__(self) -> str:
