@@ -1,7 +1,7 @@
 from seal_meta import SealMetadata, SealSignData
 from seal_file import  SealFile
 from seal_models import SealBase64
-from seal_signer import SealLocalSign, SealRemoteSign, SealSigner
+from seal_signer import SealDummySign, SealLocalSign, SealRemoteSign, SealSigner
 
 import re
 from typing import List
@@ -17,8 +17,12 @@ def seal_sign_png(s_file: SealFile, s_data: SealSignData, s_sign: SealSigner, ne
     if s_file.is_finalised:  raise ValueError("File is already finalised")
     if not s_file.load_pos("IEND"): raise ValueError("File improperly formatted (missing IEND chunk)")
 
+    
     # Generate the dummy signature
-    dummy_seal = s_file.sign_seal_meta(seal, s_sign)
+    sig_size = s_sign.signature_size(seal)
+    print(sig_size)
+    dummy_seal = s_file.sign_seal_meta(seal, SealDummySign(sig_size))
+    print("   "+str(dummy_seal))
     dummy_chunk = generate_seal_chunk(dummy_seal.toWrapper().encode())
     S_i = s_file.insert_seal_block(dummy_chunk, dummy_seal, 8, new_path)
 
@@ -127,14 +131,17 @@ def crc(inp_b: bytes) -> int:
 # with SealFile(TEST_PNG) as s_file:
 #     seal_read_png(s_file)
 
+useLocal = False
 
 TEST_PNG = "./tests/seal.png"
+num = "" if useLocal else "2"
+SIGNED_PNG = f"./tests/seal-sign{num}.png"
 with SealFile(TEST_PNG) as s_file:
     # seal_read_png(s_file)
 
     s_data = SealSignData(
-        "***REMOVED***",
-        sf="date4:HEX",
+        d="***REMOVED***" if useLocal else "signmydata.com",
+        sf="base64",
         # id="***REMOVED***"
         id="***REMOVED***"
     )
@@ -173,7 +180,7 @@ with SealFile(TEST_PNG) as s_file:
 
     seal_sign_png(s_file, 
                   s_data,
-                  r_sign,
+                  l_sign if useLocal else r_sign,
                   "./tests/seal-sign.png"
                   )
     seal_read_png(s_file)

@@ -26,6 +26,13 @@ DEF = {
 	"sf" : "base64"
 }
 
+REQ = {
+	'seal': 'SEAL version', 
+	'ka': 'Key Algorithm', 
+	's': 'signature', 
+	'd': 'domain name'
+}
+
 # Structure of Cryto.Hash objects (i.e SHA256/512/1):
 class Hash(Protocol):
 	digest_size: int
@@ -143,12 +150,11 @@ class SealMetadata():
 			else: 	meta_dict[key] = value
 		
 		# Check Required:
-		required = {'seal': 'SEAL version', 'ka': 'Key Algorithm', 's': 'signature', 'd': 'domain name'}
-		for key in required:
-			if not key in meta_dict: raise ValueError(f"Missing {meta_dict[key]} ({key})")
+		for key in REQ:
+			if not key in meta_dict: raise ValueError(f"Missing {REQ[key]} from: {meta_str}")
 		return obj(**meta_dict)
 	
-	def set_signature(self, sig_b: bytes, sig_d: Opt[datetime]):
+	def set_signature(self, sig_b: bytes, sig_d: Opt[datetime] = None):
 		self.s = SealSignature(self.sf, sig_b, sig_d)
 		
 
@@ -205,6 +211,10 @@ class SealMetadata():
 			except TypeError:
 				raise ValueError("Key provided has no private component")
 		raise RuntimeError("Invalid key algorithm: "+self.ka)
+	def ka_key_size(self, private_key: SealBase64) -> int:
+		if self.ka == "rsa":
+			return RSA.import_key(private_key.val).size_in_bits()
+		raise RuntimeError("Invalid key algorithm: "+self.ka)
 			
 	def toEntry(self) -> str:
 		return self.__str__()
@@ -220,7 +230,7 @@ class SealMetadata():
 				
 				str_val = str(value)
 				if len(str_val) == 0: continue
-				if key in DEF and DEF[key] == str_val: continue
+				if key in DEF and DEF[key] == str_val and not key in REQ: continue
 				str_dict[key] = str_val
 		return str_dict
 	

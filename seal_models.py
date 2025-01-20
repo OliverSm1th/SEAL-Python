@@ -191,12 +191,16 @@ class SealSignatureFormat:
 	def __str__(self) -> str:
 		output = ""
 		if(self.date_format != None):
-			output += "date"+str(self.date_format)+":"
+			output += "date"
+			if self.date_format > 0: output += str(self.date_format)
+			output += ":"
 		output += self.signature_format
 		return output
 
 	# Helper functions:
 	def date_len(self):  # Length of the date component
+		if self.date_format is None:
+			return 0
 		if self.date_format is None or self.date_format <= 0:
 			# date =YYYYMMDDhhmmss     (14)
 			return 14	
@@ -276,7 +280,7 @@ class SealSignature():
 			case 'base64':
 				sig_str = base64.b64encode(self.sig_b).decode('ascii')
 			case 'bin':
-				sig_str = bin(int.from_bytes(self.sig_b))[2:]
+				sig_str = "".join(["{:08b}".format(byte) for byte in self.sig_b])   #bin(int.from_bytes(self.sig_b))[2:]
 			case 'hex':
 				sig_str = self.sig_b.hex()
 			case 'HEX':
