@@ -1,11 +1,10 @@
 from datetime import datetime
 import json
-from typing import NamedTuple, Optional as Opt
-from seal_meta import Hash, SealMetadata
+from .seal_meta import SealMetadata
 from abc import ABC, abstractmethod
 import urllib.request,  urllib.error
 
-from seal_models import SealBase64, SealSignature, SealSignatureFormat
+from .seal_models import SealBase64, SealSignature, SealSignatureFormat
 	
 class SealSigner(ABC):
 	@abstractmethod
@@ -32,9 +31,14 @@ class SealSigner(ABC):
 			int: Size of the signature (number of bits)
 		"""
 		pass
+	@abstractmethod
+	def type_str(self) -> str:
+		"""Returns the type of the signer as a string"""
+		pass
 
 class SealLocalSign(SealSigner):
 	private_key: SealBase64
+
 	def __init__(self, private_key: str|bytes):
 		self.private_key = SealBase64(private_key)
 	
@@ -66,6 +70,8 @@ class SealLocalSign(SealSigner):
 		# else:
 		# 	print("date size: "+str(s_meta.sf.date_len()))
 		# 	return size + ((s_meta.sf.date_len() + 1)*4)
+	def type_str(self):
+		return "Local"
 
 class SealDummySign(SealSigner):
 	size: int
@@ -91,8 +97,6 @@ class SealDummySign(SealSigner):
 class SealRemoteSign(SealSigner):
 	api_url: str
 	api_key: str
-	
-	param_cache: dict[str,str] = {}
 
 	def __init__(self, api_url: str, api_key: str):
 		self.api_url = api_url
@@ -147,6 +151,9 @@ class SealRemoteSign(SealSigner):
 		# 	size -= (s_meta.sf.date_len() + 1)
 		print(size)
 		return size
+	
+	def type_str(self):
+		return "Remote"
 
 	@staticmethod
 	def _send_req_dict(data_dict: dict[str, str], url: str) -> dict[str, str]:

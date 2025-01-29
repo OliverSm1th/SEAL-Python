@@ -1,15 +1,26 @@
-from seal_meta import SealMetadata, SealSignData
-from seal_file import  SealFile
-from seal_models import SealBase64
-from seal_signer import SealDummySign, SealLocalSign, SealRemoteSign, SealSigner
+from .seal_meta import SealMetadata, SealSignData
+from .seal_file import  SealFile
+from .seal_signer import SealDummySign, SealLocalSign, SealRemoteSign, SealSigner
 
 import re
-from typing import List
+from typing import List, Optional as Opt
 from io import BufferedReader as File
 
 
 
-def seal_sign_png(s_file: SealFile, s_data: SealSignData, s_sign: SealSigner, new_path: str):
+def seal_sign_png(s_file: SealFile, s_data: SealSignData, s_sign: SealSigner, new_path: str=""):
+    """Inserts a SEAL metadata entry into a PNG file
+
+    Args:
+        s_file (SealFile): The PNG file
+        s_data (SealSignData): Data to include in the SEAL entry
+        s_sign (SealSigner): Signing method
+        new_path (str): Location for the signed file (none = overwrite previous file)
+
+    Raises:
+        # TODO: Figure ont when/how it can error
+        ValueError: If the file is invalid (i.e. not a PNG) or malformed
+    """
     seal = SealMetadata.fromData(s_data, byte_range="F~S,s~s+2,s+7~f")
 
     # Scan the file for prior signatures
@@ -34,18 +45,21 @@ def seal_sign_png(s_file: SealFile, s_data: SealSignData, s_sign: SealSigner, ne
     s_file.reset()
 
 def seal_read_png(s_file: SealFile) -> SealFile:
-    """Fetches SEAL metadata entries from a PNG file
+    """ Fetches SEAL metadata entries from a PNG file
 
     Parses the PNG file, extracting all SEAL metadata entries. 
     Each entry is validated by fetching the public key from the provided DNS entry.
 
-    If a specific SEAL entry is found to be invalid or malformed, throws a Warning and continues
+    Args:
+        s_file (SealFile): The PNG file
 
-    :param str file_path: The PNG file
-    :return SealFile: The updated SealFile containing all valid SEAL entries
-    :raises Warning: If a SEAL entry is invalid or malformed (continues to parse)
-    :raises ValueError: If the file is invalid (i.e. not a PNG) or malformed
-    """
+    Raises:
+        Warning: If a SEAL entry is invalid or malformed (continues to parse)
+        ValueError: If the file is invalid (i.e. not a PNG) or malformed
+
+    Returns:
+        SealFile: The updated SealFile containing all valid SEAL entries  """
+    
     cmp_str = b"\x89PNG\r\n\x1a\n"
     if s_file.read(len(cmp_str)) != cmp_str:  raise ValueError("Invalid PNG, missing PNG header")
 
@@ -130,7 +144,7 @@ def crc(inp_b: bytes) -> int:
 # TEST_PNG = "../tests/valid4.png"
 # with SealFile(TEST_PNG) as s_file:
 #     seal_read_png(s_file)
-
+"""
 useLocal = False
 
 TEST_PNG = "./tests/seal.png"
@@ -184,4 +198,4 @@ with SealFile(TEST_PNG) as s_file:
                   "./tests/seal-sign.png"
                   )
     seal_read_png(s_file)
-
+"""

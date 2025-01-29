@@ -4,10 +4,10 @@ from shutil import move as os_move
 import re
 from typing import List, Tuple, Optional as Opt, NamedTuple, Dict
 import warnings
-from seal_models import BytePos, SealByteRange
-from seal_meta import SealMetadata
-from seal_signer import SealLocalSign, SealSigner
-from seal_verify import verify_seal
+from .seal_models import BytePos, SealByteRange
+from .seal_meta import SealMetadata
+from .seal_signer import SealSigner
+from .seal_verify import verify_seal
 
 # Stores the positions and metadata for the SEAL entries
 
@@ -23,9 +23,9 @@ class SealFile():
     saved_pos:      Dict[str, int]  = {}
     is_finalised:   bool            = False
     
-    def __init__(self, file: str):
-        self.r_file_path = file
-        self.r_file = open(file, "rb")
+    def __init__(self, path: str):
+        self.r_file_path = path
+        self.r_file = open(path, "rb")
 
     def __enter__(self):
         return self

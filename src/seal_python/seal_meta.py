@@ -1,11 +1,11 @@
-from collections import namedtuple
 from datetime import datetime
 import re
-from typing import NamedTuple, Optional as Opt,Any, Self, Protocol, Tuple, cast, get_type_hints
+from typing_extensions import Any, Self   # Allows < Python3.11 to work 
+from typing import NamedTuple, Optional as Opt, Protocol, Tuple, cast, get_type_hints
 from Crypto.Hash import SHA256, SHA512, SHA1
 import Crypto.PublicKey.RSA as RSA
 from Crypto.Signature import pkcs1_15
-from seal_models import  (SealByteRange, SealSignature, SealSignatureFormat, SealKeyVersion, SealUID, SealBase64,
+from .seal_models import  (SealByteRange, SealSignature, SealSignatureFormat, SealKeyVersion, SealUID, SealBase64,
 						  KEY_ALGS_T, KEY_ALGS, DA_ALGS_T, DA_ALGS, get_fields, clean_str, format_str)
 
 # Default Values:
@@ -54,7 +54,7 @@ class SealSignData(NamedTuple):
 	ka:   KEY_ALGS_T = DEF['ka']  	# Key Algorithm
 	kv:   str		 = DEF['kv']	# Key Version
 	da:   DA_ALGS_T	 = DEF['da']	# Digest Algorithm
-	uid:  str		 = DEF['uid']	# UUID/Date
+	uid:  str		 = DEF['uid']	# UUID
 	sf:   str		 = DEF['sf']	# Signature Format
 	#             (no default)
 	id:   		Opt[str] = None # Account identifier

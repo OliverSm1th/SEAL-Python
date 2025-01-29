@@ -6,10 +6,12 @@ name = "pypi"
 [packages]
 dnspython = "*"
 pycryptodome = "*"
+typing-extensions = "*"
 
 [dev-packages]
 mypy = "*"
 pytest = "*"
+pylint = "*"
 
 [requires]
 python_version = "3.11"
@@ -17,3 +19,4 @@ python_version = "3.11"
 [scripts]
 test = "python -m pytest tests/"
 type-check = "mypy ./"
+lint = "pylint ./"

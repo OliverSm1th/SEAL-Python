@@ -1,5 +1,5 @@
 from typing      import   Optional as Opt, Any, cast, get_type_hints
-from seal_models import  (SealKeyVersion, SealUID, SealBase64, SealTimestamp,
+from .seal_models import  (SealKeyVersion, SealUID, SealBase64, SealTimestamp,
 						  KEY_ALGS_T, KEY_ALGS, get_fields, clean_str)
 
 

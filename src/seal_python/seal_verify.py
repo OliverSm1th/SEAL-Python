@@ -1,7 +1,7 @@
 import warnings
-from seal_meta import SealMetadata
-from seal_dns  import SealDNS
-from typing import List, Optional as Opt
+from .seal_meta import SealMetadata
+from .seal_dns  import SealDNS
+from typing import List
 import dns.resolver as DNS, dns.rdatatype as DNS_TYPE
 
 def verify_seal(s_meta: SealMetadata, digest_bytes: bytes):

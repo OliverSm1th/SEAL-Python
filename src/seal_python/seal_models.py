@@ -1,4 +1,5 @@
-from typing import cast, Literal as Lit, Optional as Opt, get_args, List, Tuple, NamedTuple, Self
+from typing import cast, Literal as Lit, Optional as Opt, get_args, List, Tuple, NamedTuple
+from typing_extensions import Self   # Allows < Python3.11 to work 
 import re
 import base64
 from binascii import Error as BinError

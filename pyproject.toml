@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "seal_python"
+version = "0.0.1"
+authors = [
+  { name="Oliver Smith"},
+]
+description = "A Python implementation of the SEAL specification which aims to allow users to assign attribution to media"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers=[
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11"
+]
+dependencies = [
+    "dnspython",
+    "pycryptodome",
+    "typing-extensions"
+]
+license = {file = "LICEN[CS]E*"}
+
+[project.urls]
+Homepage = "https://github.com/OliverSm1th/SEAL-Python"
