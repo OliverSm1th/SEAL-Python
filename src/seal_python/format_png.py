@@ -6,9 +6,9 @@ import re
 from typing import List, Optional as Opt
 from io import BufferedReader as File
 
+PNG_BYTE_RANGE = "F~S,s~s+2,s+7~f"
 
-
-def seal_sign_png(s_file: SealFile, s_data: SealSignData, s_sign: SealSigner, new_path: str=""):
+def seal_sign_png(s_file: SealFile, s_data: SealSignData|SealMetadata, s_sign: SealSigner, new_path: str=""):
     """Inserts a SEAL metadata entry into a PNG file
 
     Args:
@@ -21,7 +21,11 @@ def seal_sign_png(s_file: SealFile, s_data: SealSignData, s_sign: SealSigner, ne
         # TODO: Figure ont when/how it can error
         ValueError: If the file is invalid (i.e. not a PNG) or malformed
     """
-    seal = SealMetadata.fromData(s_data, byte_range="F~S,s~s+2,s+7~f")
+    if isinstance(s_data, SealSignData):
+        seal = SealMetadata.fromData(s_data, byte_range=PNG_BYTE_RANGE)
+    else:
+        seal = s_data
+        seal.set_byte_range(PNG_BYTE_RANGE)
 
     # Scan the file for prior signatures
     s_file = seal_read_png(s_file)
@@ -68,14 +72,14 @@ def seal_read_png(s_file: SealFile) -> SealFile:
     # If exif, check for special exif processing
     chunk_size_b = s_file.read(4)
     chunk_type_b = list(s_file.read(4))
-    print("┌─type────bytes─┐")
+    print("--type---bytes--")
     while len(chunk_type_b) > 0:
         chunk_size  = int.from_bytes(chunk_size_b, "big")
         chunk_type  = ''.join(map(chr, chunk_type_b))
         if(not(re.match("^[a-zA-Z]*$", chunk_type))): 
             raise ValueError(f"Invalid PNG, contains a chunk of type \"{chunk_type}\"")
         
-        print(f"├─{chunk_type}     {chunk_size}")
+        print(f"--{chunk_type}     {chunk_size}")
 
         
         if(chunk_type.lower() in ["text", "itxt", "seal"]):  # TODO: for tEXt do you separate the keyword?
@@ -99,7 +103,7 @@ def seal_read_png(s_file: SealFile) -> SealFile:
         chunk_size_b = s_file.read(4)
         chunk_type_b = list(s_file.read(4))
 
-    print("└──────PNG──────┘")
+    print("-------PNG------")
     s_file.reset()
     return s_file
 

@@ -62,6 +62,13 @@ class SealSignData(NamedTuple):
 	info: 		Opt[str] = None	# Textual comment information
 	sl:   		Opt[int] = None	# Signature Length (not implemented)
 
+	def check(self):
+		if not self.ka in KEY_ALGS: raise ValueError("Invalid key algorithm: "+self.ka)
+		SealKeyVersion.check(self.kv)
+		if not self.da in DA_ALGS:  raise ValueError("Invalid key algorithm: "+self.da)
+		SealUID.check(self.uid)
+		SealSignatureFormat.check(self.sf)
+
 
 class SealMetadata():
 	# Required:
@@ -156,7 +163,9 @@ class SealMetadata():
 	
 	def set_signature(self, sig_b: bytes, sig_d: Opt[datetime] = None):
 		self.s = SealSignature(self.sf, sig_b, sig_d)
-		
+	
+	def set_byte_range(self, b: str = DEF['b']):
+		self.b = SealByteRange(b)
 
 	def da_hash(self, file_bytes: bytes) -> Hash:
 		if self.da == "sha1":

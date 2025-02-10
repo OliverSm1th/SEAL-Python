@@ -219,6 +219,13 @@ class SealSignatureFormat:
 		# date1=YYYYMMDDhhmmss.f  etc
 		return "YYYYMMDDhhmmss"+ ("."+"f"*self.date_format if self.date_format>0 else "")
 
+	@classmethod
+	def check(obj, sf: str):
+		# Too complex, might as well do __init__
+		result = obj(sf)
+		del result
+
+
 class SealSignature():
 	sig_b: bytes		# Binary representation of the signature component 
 	date: Opt[datetime]	# Datetime representation of the date component
@@ -295,25 +302,31 @@ class SealSignature():
 class SealKeyVersion:
 	key_version: str
 	def __init__(self, kv: str):
-		if not(re.match("^[A-Za-z0-9.+\\/-]+$", kv)):
-			raise ValueError("Key version can only contain the following characters: [A-Za-z0-9.+/-]")
+		SealKeyVersion.check(kv)		# Check it's valid
 		self.key_version = kv
 	def __str__(self) -> str:
 		return self.key_version
 	def __eq__(self, other: object):
 		return isinstance(other, SealKeyVersion) and self.key_version == other.key_version
+	@classmethod
+	def check(obj, kv: str):
+		if not(re.match("^[A-Za-z0-9.+\\/-]+$", kv)):
+			raise ValueError("Key version can only contain the following characters: [A-Za-z0-9.+/-]")
 
 
 class SealUID:
 	uid: str
 	def __init__(self, uid: str):
-		if not(re.match("^[^\"\'\\s]+$|^$", uid)):
-			raise ValueError("Unique identifier cannot include the following characters: [\"\'] or any whitespace")
+		SealUID.check(uid)
 		self.uid = uid
 	def __str__(self) -> str:
 		return self.uid
 	def __eq__(self, other: object):
 		return isinstance(other, SealUID) and self.uid == other.uid
+	@classmethod
+	def check(obj, uid: str):
+		if not(re.match("^[^\"\'\\s]+$|^$", uid)):
+			raise ValueError("Unique identifier cannot include the following characters: [\"\'] or any whitespace")
 
 
 def b64_to_bytes(str_64: str) -> bytes:

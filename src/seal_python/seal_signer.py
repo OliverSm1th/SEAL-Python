@@ -92,6 +92,9 @@ class SealDummySign(SealSigner):
 	def signature_size(self, _: SealMetadata):
 		return self.size
 
+	def type_str(self):
+		return "Dummy"
+
 
 # For https://signmydata.com:
 class SealRemoteSign(SealSigner):
@@ -109,13 +112,14 @@ class SealRemoteSign(SealSigner):
 		digest_h = digest.digest().hex()
 		req_data = {
 			'seal':  str(s_meta.seal),
-			'id': s_meta.id,
 			'apikey': self.api_key,
 			'ka': str(s_meta.ka),
 			'kv': str(s_meta.kv),
 			'sf': str(s_meta.sf),
 			'digest': digest_h
 		}
+		if s_meta.id is not None:
+			req_data['id'] = s_meta.id
 
 		try:
 			sign_resp = self._send_req_dict(req_data, self.api_url)
