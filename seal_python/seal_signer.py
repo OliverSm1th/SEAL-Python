@@ -1,10 +1,11 @@
-from datetime import datetime
-import json
-from .seal_meta import SealMetadata
-from abc import ABC, abstractmethod
 import urllib.request,  urllib.error
+from abc import ABC, abstractmethod
+from datetime import datetime
+from typing import Union
+import json
 
-from .seal_models import SealBase64, SealSignature, SealSignatureFormat
+from .seal_models import SealBase64, SealSignature
+from .seal_meta import SealMetadata
 	
 class SealSigner(ABC):
 	@abstractmethod
@@ -39,7 +40,7 @@ class SealSigner(ABC):
 class SealLocalSign(SealSigner):
 	private_key: SealBase64
 
-	def __init__(self, private_key: str|bytes):
+	def __init__(self, private_key: Union[str, bytes]):
 		self.private_key = SealBase64(private_key)
 	
 	def sign(self, s_meta: SealMetadata, digest_b: bytes) -> SealMetadata:

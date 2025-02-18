@@ -6,7 +6,7 @@
     :license: MIT, see LICENSE for details
 """
 import sys
-assert sys.version_info >= (3, 10)
+assert sys.version_info >= (3, 9)
 
 from .seal_dns import SealDNS
 from .seal_meta import SealMetadata, SealSignData, SealBase64

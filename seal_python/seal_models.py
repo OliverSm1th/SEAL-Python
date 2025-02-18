@@ -1,4 +1,4 @@
-from typing import cast, Literal as Lit, Optional as Opt, get_args, List, Tuple, NamedTuple
+from typing import cast, Literal as Lit, Optional as Opt, get_args, List, Tuple, Union
 from typing_extensions import Self   # Allows < Python3.11 to work 
 import re
 import base64
@@ -264,23 +264,24 @@ class SealSignature():
 			raise ValueError("Invalid signature, does not match signature format (signature only)")
 		
 		# Parse the signature itself
-		match sf.signature_format:
-			case 'base64':
-				no_pad = re.sub(r'[\s]+$', '', sig_str)
-				sig_b = b64_to_bytes(no_pad)
-			case 'bin':
-				if not(re.match("^[01]+$", sig_str)): 
-					raise ValueError("Invalid binary signature, must only contain 0 or 1")
-				sig_b = int(sig_str, 2).to_bytes((len(sig_str)+7)//8)  # From https://stackoverflow.com/a/32676625
-			case 'hex' | 'HEX':
-				m = "a-f" if sf.signature_format == "hex" else "A-F"
-				if not(re.match(f"^[0-9{m}]+$", sig_str)):
-					raise ValueError(f"Invalid hex signature, must only contain the following characters: [0-9{m}]")
-				if len(sig_str)%4 != 0:
-					raise ValueError(f"Invalid hex signature, must be a two-byte hex (len divisible by 4)")
-				sig_b = bytes.fromhex(sig_str.upper())
-			case _:
-				sig_b = bytes()
+		sig_format = sf.signature_format
+		if sig_format == "base64":
+			no_pad = re.sub(r'[\s]+$', '', sig_str)
+			sig_b = b64_to_bytes(no_pad)
+		elif sig_format == "bin":
+			if not(re.match("^[01]+$", sig_str)): 
+				raise ValueError("Invalid binary signature, must only contain 0 or 1")
+			sig_b = int(sig_str, 2).to_bytes((len(sig_str)+7)//8)  # From https://stackoverflow.com/a/32676625
+		elif sig_format == "hex" or "HEX":
+			m = "a-f" if sf.signature_format == "hex" else "A-F"
+			if not(re.match(f"^[0-9{m}]+$", sig_str)):
+				raise ValueError(f"Invalid hex signature, must only contain the following characters: [0-9{m}]")
+			if len(sig_str)%4 != 0:
+				raise ValueError(f"Invalid hex signature, must be a two-byte hex (len divisible by 4)")
+			sig_b = bytes.fromhex(sig_str.upper())
+		else:
+			sig_b = bytes()
+
 		return cls(sf, sig_b, sig_date)
 
 	def date_str(self) -> str:
@@ -290,18 +291,13 @@ class SealSignature():
 			return self.sf.format_date(self.date)
 	
 	def __str__(self) -> str:
-		match self.sf.signature_format:
-			case 'base64':
-				sig_str = base64.b64encode(self.sig_b).decode('ascii')
-			case 'bin':
-				sig_str = "".join(["{:08b}".format(byte) for byte in self.sig_b])   #bin(int.from_bytes(self.sig_b))[2:]
-			case 'hex':
-				sig_str = self.sig_b.hex()
-			case 'HEX':
-				sig_str = self.sig_b.hex().upper()
-			case _:
-				return ""
-		if self.date is None: return sig_str
+		sig_str = {
+			'base64': 	base64.b64encode(self.sig_b).decode('ascii'),
+			'bin': 		"".join(["{:08b}".format(byte) for byte in self.sig_b]),
+			'hex':		self.sig_b.hex(),
+			'HEX':		self.sig_b.hex().upper()
+		}.get(self.sf.signature_format, "")
+
 		return self.date_str() + ":" + sig_str
 	
 
@@ -347,7 +343,7 @@ def b64_to_bytes(str_64: str) -> bytes:
 
 class SealBase64:
 	val: bytes
-	def __init__(self, str_64: str|bytes):
+	def __init__(self, str_64: Union[str, bytes]):
 		if isinstance(str_64, bytes):
 			self.val = str_64
 		elif isinstance(str_64, str):
