@@ -14,15 +14,17 @@ warnings.formatwarning = warning_format
 
 BYTE_LIT_ORDER = "FPpSsf"
 
-class BytePos(NamedTuple):
+class BytePos:
 	literal: str
 	offset: int
 
 	is_start: bool
 	
+	def __init__(self, literal: str, offset: int, is_start: bool):
+		self.literal = literal; self.offset = offset; self.is_start = is_start
 		
 	@classmethod
-	def from_str(obj, part, is_start):
+	def from_str(cls, part, is_start):
 		if len(part) == 0: 	literal = 'F' if is_start else 'f'
 		else: 				literal = part[0]
 		offset = 0
@@ -34,7 +36,7 @@ class BytePos(NamedTuple):
 				raise ValueError(f"Invalid ByteRange part \'{part}\', each part must be of the form: [literal]+/-[num]")
 			
 			if part[1] == '-': offset *= -1
-		return obj(literal, offset, is_start)
+		return cls(literal, offset, is_start)
 	
 	def check_valid(self): # Checks for basic errors without any other context
 		if self.literal == '': self.literal = 'F' if self.is_start else 'f'
@@ -102,7 +104,7 @@ class SealByteRange:
 			arr.extend(range)
 		return arr
 	
-	def overlaps(a, b: Self) -> bool:  # TODO: Remove?
+	def overlaps(self, a, b: Self) -> bool:  # TODO: Remove?
 		a_arr = a._flatten()
 		b_arr = b._flatten()
 		a_i = 0
@@ -217,12 +219,13 @@ class SealSignatureFormat:
 	def date_f_str(self):  # String representation of the date format (for errors)
 		# date =YYYYMMDDhhmmss
 		# date1=YYYYMMDDhhmmss.f  etc
+		if self.date_format is None: return ""
 		return "YYYYMMDDhhmmss"+ ("."+"f"*self.date_format if self.date_format>0 else "")
 
 	@classmethod
-	def check(obj, sf: str):
+	def check(cls, sf: str):
 		# Too complex, might as well do __init__
-		result = obj(sf)
+		result = cls(sf)
 		del result
 
 
@@ -237,13 +240,13 @@ class SealSignature():
 		self.date  = date
 	
 	@classmethod
-	def fromStr(obj, sf: SealSignatureFormat, str: str):
-		sig_str  = str
+	def fromStr(cls, sf: SealSignatureFormat, sig_str: str):
+		sig_str  = sig_str
 		sig_date = None
 		# Parse the date
 		if sf.date_format is not None:
 			if sig_str.count(':') != 1:  raise ValueError("Invalid signature, does not match signature format (date:signature)")
-			[date_str, sig_str] = str.split(':')
+			[date_str, sig_str] = sig_str.split(':')
 			
 			if len(date_str) != sf.date_len() or (sf.date_format > 0 and date_str[14] != '.'):
 				raise ValueError(f"Invalid signature, date does not match the expected format: {sf.date_f_str()}")
@@ -257,13 +260,13 @@ class SealSignature():
 				if "does not match format" in str(e):
 					raise ValueError(f"Invalid signature, date \'{date_str}\' does not match the expected format: {sf.date_f_str()}")
 				else: raise e
-		elif str.count(':') > 0:
+		elif sig_str.count(':') > 0:
 			raise ValueError("Invalid signature, does not match signature format (signature only)")
 		
 		# Parse the signature itself
 		match sf.signature_format:
 			case 'base64':
-				no_pad = re.sub('[\\s]+$', '', sig_str)
+				no_pad = re.sub(r'[\s]+$', '', sig_str)
 				sig_b = b64_to_bytes(no_pad)
 			case 'bin':
 				if not(re.match("^[01]+$", sig_str)): 
@@ -278,10 +281,13 @@ class SealSignature():
 				sig_b = bytes.fromhex(sig_str.upper())
 			case _:
 				sig_b = bytes()
-		return obj(sf, sig_b, sig_date)
+		return cls(sf, sig_b, sig_date)
 
 	def date_str(self) -> str:
-		return self.sf.format_date(self.date)
+		if self.date is None: 
+			return ""
+		else:
+			return self.sf.format_date(self.date)
 	
 	def __str__(self) -> str:
 		match self.sf.signature_format:
@@ -309,7 +315,7 @@ class SealKeyVersion:
 	def __eq__(self, other: object):
 		return isinstance(other, SealKeyVersion) and self.key_version == other.key_version
 	@classmethod
-	def check(obj, kv: str):
+	def check(cls, kv: str):
 		if not(re.match("^[A-Za-z0-9.+\\/-]+$", kv)):
 			raise ValueError("Key version can only contain the following characters: [A-Za-z0-9.+/-]")
 
@@ -324,7 +330,7 @@ class SealUID:
 	def __eq__(self, other: object):
 		return isinstance(other, SealUID) and self.uid == other.uid
 	@classmethod
-	def check(obj, uid: str):
+	def check(cls, uid: str):
 		if not(re.match("^[^\"\'\\s]+$|^$", uid)):
 			raise ValueError("Unique identifier cannot include the following characters: [\"\'] or any whitespace")
 
@@ -344,9 +350,10 @@ class SealBase64:
 	def __init__(self, str_64: str|bytes):
 		if isinstance(str_64, bytes):
 			self.val = str_64
-		else:
-			str_val = re.sub('[\"\\s]', '', str_64)
+		elif isinstance(str_64, str):
+			str_val = re.sub(r'[\"\s]', '', str_64)
 			self.val = b64_to_bytes(str_val)
+		else: self.val = b''
 
 	def __str__(self) -> str:
 		b64 = base64.b64encode(self.val)

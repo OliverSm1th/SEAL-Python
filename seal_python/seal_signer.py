@@ -63,13 +63,7 @@ class SealLocalSign(SealSigner):
 		
 	def signature_size(self, s_meta: SealMetadata):
 		return s_meta.ka_key_size(self.private_key)
-		# print("sig size: "+str(size))
-		# if (s_meta.sf.date_format is None or s_meta.sf.date_len() <= 0): 
-		# 	print("no date")
-		# 	return size
-		# else:
-		# 	print("date size: "+str(s_meta.sf.date_len()))
-		# 	return size + ((s_meta.sf.date_len() + 1)*4)
+
 	def type_str(self):
 		return "Local"
 
@@ -78,9 +72,8 @@ class SealDummySign(SealSigner):
 	def __init__(self, sig_size: int):
 		self.size = sig_size
 	
-	def sign(self, s_meta: SealMetadata, _: bytes) -> SealMetadata:
+	def sign(self, s_meta: SealMetadata, digest_b: bytes) -> SealMetadata:
 		size = self.size // 8
-		print(f"DUMMY (size={size})")
 		date = None
 		if (s_meta.sf.date_format is not None): 
 			date = datetime.now()
@@ -89,7 +82,7 @@ class SealDummySign(SealSigner):
 		s_meta.set_signature(bytes(size), date)
 		return s_meta
 	
-	def signature_size(self, _: SealMetadata):
+	def signature_size(self, s_meta: SealMetadata):
 		return self.size
 
 	def type_str(self):
@@ -126,22 +119,22 @@ class SealRemoteSign(SealSigner):
 			if 'error' in sign_resp:			raise ValueError("Error: "+sign_resp["error"])
 			if not 'signature'  in sign_resp: 	raise ValueError("Missing signature")
 		except ValueError as e:               	raise ValueError(f"Unable to sign digest using {self.api_url}\n    Data: {req_data}\n    {str(e)}") from None
-		print(sign_resp['signature'])
-		print(sign_resp['sigsize'])
+
 		sig = SealSignature.fromStr(s_meta.sf, sign_resp['signature'])
 		s_meta.s = sig
 		
 		return s_meta
 	
-	def signature_size(self, s_meta: SealMetadata):
+	def signature_size(self, s_meta: SealMetadata) -> int:
 		req_data = {
 			'seal': str(s_meta.seal),
-			'id': s_meta.id,
 			'apikey': self.api_key,
 			'kv': str(s_meta.kv),
 			'ka': str(s_meta.ka),
 			'sf': "hex",
 		}
+		if s_meta.id is not None:
+			req_data['id'] = s_meta.id
 
 		sign_params = self._send_req_dict(req_data, self.api_url)
 		if 'error' in sign_params:
@@ -150,11 +143,10 @@ class SealRemoteSign(SealSigner):
 			raise ValueError(f"Unable to fetch signing parameters using {self.api_url}\n    Data: {req_data}\n    Missing sigsize")
 
 		size = sign_params['sigsize']*4
-		# TODO check this works
-		# if (s_meta.sf.date_format is not None and s_meta.sf.date_len() > 0):
-		# 	size -= (s_meta.sf.date_len() + 1)
-		print(size)
-		return size
+
+		if size.isnumeric():
+			return int(size)
+		return 0
 	
 	def type_str(self):
 		return "Remote"
@@ -181,12 +173,13 @@ class SealRemoteSign(SealSigner):
 								})
 		try:
 			response = urllib.request.urlopen(req)
-		except urllib.error.URLError as e:
-			raise ValueError("URLError:  "+e.reason)
 		except urllib.error.HTTPError as e:
-			raise ValueError("HTTPError: "+e.code)
+			raise ValueError(f"HTTPError: {e.code}")
+		except urllib.error.URLError as e:
+			raise ValueError(f"URLError:  {e.reason}")
+		
 		response_b : bytes = response.read()
 		try:	
 			return json.loads(response_b)
-		except json.decoder.JSONDecoderError:
+		except json.decoder.JSONDecodeError:
 			raise SyntaxError("Invalid JSON: "+response_b.decode('utf8'))

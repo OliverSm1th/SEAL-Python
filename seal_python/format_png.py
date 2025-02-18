@@ -1,5 +1,5 @@
 from .seal_meta import SealMetadata, SealSignData
-from .seal_file import  SealFile
+from .seal_file import  SealEntry, SealFile
 from .seal_signer import SealDummySign, SealLocalSign, SealRemoteSign, SealSigner
 
 import re
@@ -8,7 +8,7 @@ from io import BufferedReader as File
 
 PNG_BYTE_RANGE = "F~S,s~s+2,s+7~f"
 
-def seal_sign_png(s_file: SealFile, s_data: SealSignData|SealMetadata, s_sign: SealSigner, new_path: str=""):
+def seal_sign_png(s_file: SealFile, s_data: SealSignData|SealMetadata, s_sign: SealSigner, new_path: str="") -> None:
     """Inserts a SEAL metadata entry into a PNG file
 
     Args:
@@ -18,7 +18,7 @@ def seal_sign_png(s_file: SealFile, s_data: SealSignData|SealMetadata, s_sign: S
         new_path (str): Location for the signed file (none = overwrite previous file)
 
     Raises:
-        # TODO: Figure ont when/how it can error
+        # TODO: Figure out when/how it can error
         ValueError: If the file is invalid (i.e. not a PNG) or malformed
     """
     if isinstance(s_data, SealSignData):
@@ -35,20 +35,19 @@ def seal_sign_png(s_file: SealFile, s_data: SealSignData|SealMetadata, s_sign: S
     
     # Generate the dummy signature
     sig_size = s_sign.signature_size(seal)
-    print(sig_size)
     dummy_seal = s_file.sign_seal_meta(seal, SealDummySign(sig_size))
-    print("   "+str(dummy_seal))
+    s_file.log(f"Signing: {dummy_seal} (dummy)")
     dummy_chunk = generate_seal_chunk(dummy_seal.toWrapper().encode())
     S_i = s_file.insert_seal_block(dummy_chunk, dummy_seal, 8, new_path)
 
     # Generate the real signature
     signed_seal = s_file.sign_seal_meta(seal, s_sign)
-    print("   "+str(signed_seal))
+    s_file.log(f"Signing: {signed_seal}")
     chunk_b = generate_seal_chunk(signed_seal.toWrapper().encode())
     s_file.insert_seal_block(chunk_b, signed_seal, 8, S_i=S_i)
     s_file.reset()
 
-def seal_read_png(s_file: SealFile) -> SealFile:
+def seal_read_png(s_file: SealFile) -> list[SealEntry]:
     """ Fetches SEAL metadata entries from a PNG file
 
     Parses the PNG file, extracting all SEAL metadata entries. 
@@ -62,7 +61,7 @@ def seal_read_png(s_file: SealFile) -> SealFile:
         ValueError: If the file is invalid (i.e. not a PNG) or malformed
 
     Returns:
-        SealFile: The updated SealFile containing all valid SEAL entries  """
+        SealFile: The updated SealFile containing all valid SEAL entries"""
     
     cmp_str = b"\x89PNG\r\n\x1a\n"
     if s_file.read(len(cmp_str)) != cmp_str:  raise ValueError("Invalid PNG, missing PNG header")
@@ -72,14 +71,14 @@ def seal_read_png(s_file: SealFile) -> SealFile:
     # If exif, check for special exif processing
     chunk_size_b = s_file.read(4)
     chunk_type_b = list(s_file.read(4))
-    print("--type---bytes--")
+    s_file.log("--type---bytes--")
     while len(chunk_type_b) > 0:
         chunk_size  = int.from_bytes(chunk_size_b, "big")
         chunk_type  = ''.join(map(chr, chunk_type_b))
         if(not(re.match("^[a-zA-Z]*$", chunk_type))): 
             raise ValueError(f"Invalid PNG, contains a chunk of type \"{chunk_type}\"")
         
-        print(f"--{chunk_type}     {chunk_size}")
+        s_file.log(f"--{chunk_type}     {chunk_size}")
 
         
         if(chunk_type.lower() in ["text", "itxt", "seal"]):  # TODO: for tEXt do you separate the keyword?
@@ -91,7 +90,7 @@ def seal_read_png(s_file: SealFile) -> SealFile:
                 pt2 = sig.split(":")[0]+":..." if sig.count(':') > 0 else "..."
                 seal_str = pt1+"s="+pt2+"/>"
 
-                print("│ " + ('✓' if result[0] else '✕') + " " + seal_str)
+                s_file.log("│ " + ('✓' if result[0] else '✕') + " " + seal_str)
         else:
             if chunk_type.lower() == "iend":  # For writing later
                 s_file.save_pos("IEND", -8)
@@ -103,9 +102,9 @@ def seal_read_png(s_file: SealFile) -> SealFile:
         chunk_size_b = s_file.read(4)
         chunk_type_b = list(s_file.read(4))
 
-    print("-------PNG------")
+    s_file.log("-------PNG------")
     s_file.reset()
-    return s_file
+    return s_file.seal_arr
 
 # Helper Functions;
 def compare_b_str(b: File, cmp_str: bytes) -> bool:
@@ -145,9 +144,6 @@ def crc(inp_b: bytes) -> int:
         c = crc_table[(c ^ byte) & 0xff] ^ ((c >> 8)&0xFFFFFF)
     return c ^ 0xffffffff
 
-# TEST_PNG = "../tests/valid4.png"
-# with SealFile(TEST_PNG) as s_file:
-#     seal_read_png(s_file)
 """
 useLocal = False
 

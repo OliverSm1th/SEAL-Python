@@ -19,13 +19,20 @@ class SealEntry(NamedTuple):
 class SealFile():
     r_file:         File
     r_file_path:    str
-    seal_arr:       List[SealEntry] = []
-    saved_pos:      Dict[str, int]  = {}
-    is_finalised:   bool            = False
+    debug:          bool
+    seal_arr:       List[SealEntry]
+    saved_pos:      Dict[str, int]
+    is_finalised:   bool
     
-    def __init__(self, path: str):
+    
+    def __init__(self, path: str, debug=False):
         self.r_file_path = path
         self.r_file = open(path, "rb")
+        self.debug = debug
+        # Initial Values:
+        self.seal_arr     = []
+        self.saved_pos    = {}
+        self.is_finalised = False
 
     def __enter__(self):
         return self
@@ -56,7 +63,6 @@ class SealFile():
         except ValueError as e:  
             warnings.warn(f"  Invalid SEAL structure- {str(e)}")
             return (False, None)
-        print(seal_str)
 
         # Check the range is positioned correctly
         isFirst = len(self.seal_arr) == 0
@@ -64,7 +70,6 @@ class SealFile():
     
         # Get signature start + end pos (S+s)
         (S, s) = SealMetadata.get_offsets(seal_str)
-        # print(f"({S}:{s}) {seal_str[S:s]}")
 
         self.seal_arr.append(SealEntry(block_start + S, block_start + s,seal))
 
@@ -115,13 +120,12 @@ class SealFile():
         (S, s) = SealMetadata.get_offsets(seal_str)
 
         seal_entry = SealEntry(S + cur_pos + seal_data_offset, s + cur_pos +seal_data_offset, seal)
-        print(f"   Seal entry: ({seal_entry.start, seal_entry.end})")
         if overwrite:  # Remove the old metadata at the same position
-            print(f"   Overwriting SEAL entry #{S_i}  ({seal_entry.start}:{seal_entry.end})")
+            self.log(f"   Overwriting SEAL entry #{S_i}  ({seal_entry.start}:{seal_entry.end})")
             self.seal_arr[S_i] = seal_entry
             return S_i
         else:
-            print(f"   Inserting new SEAL entry #{len(self.seal_arr)}  ({seal_entry.start}:{seal_entry.end})")
+            self.log(f"   Inserting new SEAL entry #{len(self.seal_arr)}  ({seal_entry.start}:{seal_entry.end})")
             self.seal_arr.append(seal_entry)
             return len(self.seal_arr) - 1
 
@@ -143,8 +147,8 @@ class SealFile():
 
         
         w_file_path = new_path if len(new_path) > 0 else SealFile.find_unique_path(self.r_file_path)
-        print(f"Reading from: {self.r_file_path}")
-        print(f"Writing to: {w_file_path}")
+        self.log(f"Reading from: {self.r_file_path}")
+        self.log(f"Writing to: {w_file_path}")
         w_file = open(w_file_path, 'wb')
         w_file.write(self.r_file.read(cur_pos))  # Copy file up to the current point
         w_file.write(bytes)
@@ -155,7 +159,7 @@ class SealFile():
         
         self.r_file.close()
         if len(new_path) == 0: # Move w_file to r_file_path
-            print(f"Moving {w_file_path} -> {self.r_file_path}")
+            self.log(f"Moving {w_file_path} -> {self.r_file_path}")
             os_move(w_file_path, self.r_file_path)
             w_file_path = self.r_file_path
 
@@ -163,23 +167,23 @@ class SealFile():
         self.r_file = open(w_file_path, "rb")
         self.r_file_path = w_file_path
 
-        if overwrite: return # TODO: set shift to difference in length
+        # TODO: do we need this (commented out for now)
+        # if overwrite: return # TODO: set shift to difference in length
 
         # Shift all positions in self.seal_arr and self.saved_pos if needed
         shift = len(bytes)
-        print(f"Cur_pos: {cur_pos}")
         for entry_i, entry in enumerate(self.seal_arr):
             if max(entry.end, entry.start) < cur_pos: continue
             e_start = entry.start
             e_end   = entry.end
             if entry.end > cur_pos:    e_end += shift
             if entry.start > cur_pos:  e_start += shift
-            print(f"Shifting ({entry.start, entry.end}) -> ({e_start, e_end})")
+            self.log(f"Shifting ({entry.start, entry.end}) -> ({e_start, e_end})")
             self.seal_arr[entry_i] = SealEntry(e_start, e_end, entry.seal)
         
         for key, value in self.saved_pos.items():
             if value >= cur_pos:        value += shift
-            print(f"Shifting {key} ({value-shift}) -> ({value})")
+            self.log(f"Shifting {key} ({value-shift}) -> ({value})")
             self.saved_pos[key] = value
         self.r_file.seek(cur_pos, 0)
         
@@ -211,15 +215,14 @@ class SealFile():
             else:               # Read the rest of the file + remove the required offset
                 result = self.r_file.read(-1)
                 result[:end_pos+1]
-            # if len(result) < 10:
-            #     print(f"({start_pos!r}:{end_pos!r}){result!r}")
-            # else:
-            #     print(f"({start_pos!r}:{end_pos!r})\"{result[:8]!r}...{result[-8:]!r}")
             digest_bytes += result
         self.r_file.seek(prev_pos, 0)
         
         return digest_bytes
-    
+
+    def log(self, msg: str):
+        if self.debug: print(msg)
+
     def _file_pos(self, bp: BytePos, S_i: int, write_block: bool = False) -> int:
         # TODO: Remove
         # When reading, S_i is the number of the current SEAL block which Ss refers to
@@ -235,7 +238,7 @@ class SealFile():
             raise RuntimeError(f"Invalid byte pos: {bp.literal} for SEAL block #{S_i}, block not added yet (size={seal_num})")
         if bp.literal in 'Pp' and seal_num == 0:
             raise RuntimeError(f"Invalid byte pos: {bp.literal} for SEAL block #{S_i}, no previous signature yet")
-
+        
         match bp.literal:
             case 'F':
                 cur_pos = 0
@@ -249,6 +252,7 @@ class SealFile():
                 cur_pos = self.seal_arr[S_i-1].start
             case 'p':
                 cur_pos = self.seal_arr[S_i-1].end
+            case _: cur_pos = 0
 
         return cur_pos + bp.offset
 
@@ -264,6 +268,7 @@ class SealFile():
             i +=1
         return f"{path_}-{i}.{ext}"
 
+
     # ---Not Used/Broken--
     def _last_seal(self) -> Opt[SealMetadata]:
         i = len(self.seal_arr)-1
@@ -278,7 +283,7 @@ class SealFile():
 
         :param block_len: Length of block
         :type block_len: int
-        :raises Warning: Prints a warning if it finds an invalid or malformed SEAL entry
+        :raises Warning: A warning is thrown if it finds an invalid or malformed SEAL entry
         :raises ValueError: An error is thrown if the block is not a valid SEAL block
         \"""         
         block = self.file.read(block_len)
@@ -307,9 +312,6 @@ class SealFile():
             seal_str  = block_str[:end_i]
             block_str = block_str[end_i+2:]
 
-            print(f"SEAL #{seal_i}")
-            print(seal_str)
-            
             if self.is_finalised:
                 warnings.warn("     Invalid record, cannot include another signature after a finalized signature")
                 continue            

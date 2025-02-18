@@ -1,5 +1,7 @@
-from seal_models import *
+from seal_python import *
 import pytest
+
+
 
 def convert_dict(test_dict):
     test_arr = []
@@ -20,7 +22,7 @@ model_tests = {
     SealKeyVersion: (["1", "AZax03", "test++key.", ], ["test key", "Test_"]),
     SealUID: (["", "identifier"], ["test key", "\"test\""]),
     SealBase64: (
-        ["abcdefg", "abcdefg=", "\"abC\" \"defg\"", "\"kEyy\""],
+        ["abcdefg", "abcdefg=", "\"abcdefg\"", "\"abC\" \"defg\"", "\"kEyy\""],
         ["key_", "\'testkey"]
     )
 }
@@ -54,7 +56,7 @@ sig_tests = {
     )
 }
 
-@pytest.mark.parametrize(["sf", "s", "is_valid"], convert_dict(sig_tests))
+@pytest.mark.parametrize(["sf_str", "s", "is_valid"], convert_dict(sig_tests))
 def test_signature(sf_str: str, s: str, is_valid: bool):
     try:
         sf = SealSignatureFormat(sf_str)

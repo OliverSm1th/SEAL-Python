@@ -11,19 +11,19 @@ from .seal_models import  (SealByteRange, SealSignature, SealSignatureFormat, Se
 # Default Values:
 SEAL_DEF = 1
 
-# KA_DEF = "rsa"
-# KV_DEF = "1"
-# DA_DEF = "sha256"
-# B_DEF  = "F~S,s~f"
-# UID_DEF= ""
-# SF_DEF = "base64"
-DEF = {
-	"ka" : "rsa",
-	"kv" : "1",
-	"da" : "sha256",
-	"b"  : "F~S,s~f",
-	"uid": "",
-	"sf" : "base64"
+KA_DEF : KEY_ALGS_T = "rsa"
+KV_DEF : str		= "1"
+DA_DEF : DA_ALGS_T 	= "sha256"
+B_DEF  : str		= "F~S,s~f"
+UID_DEF: str		= ""
+SF_DEF : str		= "base64"
+DEF: dict[str, str] = {
+	"ka" : KA_DEF,
+	"kv" : KV_DEF,
+	"da" : DA_DEF,
+	"b"  : B_DEF,
+	"uid": UID_DEF,
+	"sf" : SF_DEF
 }
 
 REQ = {
@@ -51,11 +51,11 @@ class SealSignData(NamedTuple):
 	d:	  str					# Domain Name
 
 	# Optional: (with default values)
-	ka:   KEY_ALGS_T = DEF['ka']  	# Key Algorithm
-	kv:   str		 = DEF['kv']	# Key Version
-	da:   DA_ALGS_T	 = DEF['da']	# Digest Algorithm
-	uid:  str		 = DEF['uid']	# UUID
-	sf:   str		 = DEF['sf']	# Signature Format
+	ka:   KEY_ALGS_T = KA_DEF 	# Key Algorithm 
+	kv:   str		 = KV_DEF 	# Key Version
+	da:   DA_ALGS_T	 = DA_DEF	# Digest Algorithm
+	uid:  str		 = UID_DEF	# UUID
+	sf:   str		 = SF_DEF	# Signature Format
 	#             (no default)
 	id:   		Opt[str] = None # Account identifier
 	copyright: 	Opt[str] = None	# Copyright information
@@ -94,9 +94,9 @@ class SealMetadata():
 
 	def __init__(self,	seal: int,			d:    str,
 			  
-			  			ka:	 KEY_ALGS_T	= DEF['ka'],	kv: str = DEF['kv'],		
-						da:  DA_ALGS_T	= DEF['da'],	b: 	str = DEF['b'],
-						uid: str		= DEF['uid'],	sf:	str = DEF['sf'],
+			  			ka:	 KEY_ALGS_T	= KA_DEF,	kv: str = KV_DEF,		
+						da:  DA_ALGS_T	= DA_DEF,	b: 	str = B_DEF,
+						uid: str		= UID_DEF,	sf:	str = SF_DEF,
 
 						id:   Opt[str]	=None,		copyright: 	Opt[str]=None,
 						info: Opt[str]	=None,		sl:			Opt[int]=None,
@@ -123,24 +123,24 @@ class SealMetadata():
 		self.sl   = sl  # (not implemented)
 	
 	@classmethod
-	def fromData(obj, data: SealSignData, seal: int = SEAL_DEF, byte_range: str = DEF['b'], signature: Opt[str] = None) -> Self:
+	def fromData(cls, data: SealSignData, seal: int = SEAL_DEF, byte_range: str = B_DEF, signature: Opt[str] = None) -> Self:
 		data_dict = data._asdict()
 		data_dict['seal'] = seal
 		data_dict['b']    = byte_range
 		data_dict['s']    = signature
-		return obj(**data_dict)
+		return cls(**data_dict)
 
 	@classmethod
-	def fromWrapper(obj, wrap_str: str) -> Self:
+	def fromWrapper(cls, wrap_str: str) -> Self:
 		if not re.match("^<seal (.)*/>", wrap_str):
 			raise ValueError(f"Not a valid SEAL wrapper. Must be be of the form: <seal .../>")
 		seal_str = wrap_str[6:-2]
-		return obj.fromEntry(seal_str)
+		return cls.fromEntry(seal_str)
 
 	@classmethod
-	def fromEntry(obj, meta_str: str) -> Self:
+	def fromEntry(cls, meta_str: str) -> Self:
 		meta_dict : dict[str, Any] = {}
-		meta_struct = get_type_hints(obj)
+		meta_struct = get_type_hints(cls)
 		fields = get_fields(meta_str)
 
 		for field in fields:
@@ -159,12 +159,12 @@ class SealMetadata():
 		# Check Required:
 		for key in REQ:
 			if not key in meta_dict: raise ValueError(f"Missing {REQ[key]} from: {meta_str}")
-		return obj(**meta_dict)
+		return cls(**meta_dict)
 	
 	def set_signature(self, sig_b: bytes, sig_d: Opt[datetime] = None):
 		self.s = SealSignature(self.sf, sig_b, sig_d)
 	
-	def set_byte_range(self, b: str = DEF['b']):
+	def set_byte_range(self, b: str = B_DEF):
 		self.b = SealByteRange(b)
 
 	def da_hash(self, file_bytes: bytes) -> Hash:
