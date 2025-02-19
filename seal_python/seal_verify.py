@@ -1,6 +1,7 @@
 import warnings
 from .seal_meta import SealMetadata
 from .seal_dns  import SealDNS
+from .log import log
 from typing import List
 import dns.resolver as DNS, dns.rdatatype as DNS_TYPE
 
@@ -9,6 +10,7 @@ def verify_seal(s_meta: SealMetadata, digest_bytes: bytes):
     
     # Fetch byte range:
     digest       = s_meta.da_hash(digest_bytes)
+    log(f"Digest ({s_meta.da}): {digest.hexdigest()}")
     
     if (s_meta.sf.date_format is not None) or (s_meta.id is not None): # Double digest
         digest1 = digest.digest()
@@ -19,6 +21,7 @@ def verify_seal(s_meta: SealMetadata, digest_bytes: bytes):
             head = s_meta.s.date_str() + ":" + head
         digest2 = head.encode() + digest1
         digest = digest.new(digest2)
+        log(f"Double Digest: {digest.hexdigest()}")
         
 
     # Retrieve the public key from the DNS entry
@@ -44,8 +47,10 @@ def verify_seal(s_meta: SealMetadata, digest_bytes: bytes):
         if seal_dns.p is None: # Public key revoked  # TODO: Should this check for other DNS records? 
             raise ValueError(f"All instances of the public key (kv={s_meta.kv}) are revoked")
     
-        if (seal_dns.r is not None and (s_meta.s.sig_d is None or seal_dns.r.time < s_meta.s.sig_d)):
+        if (seal_dns.r is not None and (s_meta.s.date is None or seal_dns.r.time < s_meta.s.date)):
             raise ValueError(f"All signatures after {seal_dns.r} are revoked")
+        
+        log(f"DNS Key: {str(seal_dns.p)[:130]}")
         
         # Decrypt the signature using the public key
         try:

@@ -1,10 +1,12 @@
 from .seal_meta import SealMetadata, SealSignData
 from .seal_file import  SealEntry, SealFile
 from .seal_signer import SealDummySign, SealLocalSign, SealRemoteSign, SealSigner
+from .log import log, log_h, debug as is_debug
 
 import re
-from typing import List, Optional as Opt
+from typing import List
 from io import BufferedReader as File
+
 
 PNG_BYTE_RANGE = "F~S,s~s+2,s+7~f"
 
@@ -36,13 +38,13 @@ def seal_sign_png(s_file: SealFile, s_data: SealSignData|SealMetadata, s_sign: S
     # Generate the dummy signature
     sig_size = s_sign.signature_size(seal)
     dummy_seal = s_file.sign_seal_meta(seal, SealDummySign(sig_size))
-    s_file.log(f"Signing: {dummy_seal} (dummy)")
+    log(f"Signing: {dummy_seal} (dummy)")
     dummy_chunk = generate_seal_chunk(dummy_seal.toWrapper().encode())
     S_i = s_file.insert_seal_block(dummy_chunk, dummy_seal, 8, new_path)
 
     # Generate the real signature
     signed_seal = s_file.sign_seal_meta(seal, s_sign)
-    s_file.log(f"Signing: {signed_seal}")
+    log(f"Signing: {signed_seal}")
     chunk_b = generate_seal_chunk(signed_seal.toWrapper().encode())
     s_file.insert_seal_block(chunk_b, signed_seal, 8, S_i=S_i)
     s_file.reset()
@@ -71,26 +73,29 @@ def seal_read_png(s_file: SealFile) -> list[SealEntry]:
     # If exif, check for special exif processing
     chunk_size_b = s_file.read(4)
     chunk_type_b = list(s_file.read(4))
-    s_file.log("--type---bytes--")
+    log("--type---bytes--")
     while len(chunk_type_b) > 0:
         chunk_size  = int.from_bytes(chunk_size_b, "big")
         chunk_type  = ''.join(map(chr, chunk_type_b))
         if(not(re.match("^[a-zA-Z]*$", chunk_type))): 
             raise ValueError(f"Invalid PNG, contains a chunk of type \"{chunk_type}\"")
         
-        s_file.log(f"--{chunk_type}     {chunk_size}")
+        log(f"--{chunk_type}     {chunk_size}")
 
-        
         if(chunk_type.lower() in ["text", "itxt", "seal"]):  # TODO: for tEXt do you separate the keyword?
+            log_h("│   ")
             result = s_file.read_txt_block(chunk_size)
             
             if result[1] is not None:
+                
                 seal = result[1]
                 [pt1, sig] = seal.toWrapper().split("s=")
                 pt2 = sig.split(":")[0]+":..." if sig.count(':') > 0 else "..."
                 seal_str = pt1+"s="+pt2+"/>"
 
-                s_file.log("│ " + ('✓' if result[0] else '✕') + " " + seal_str)
+                log_h()
+                log("│ " + ('✓' if result[0] else '✕') + " " + seal_str)
+            else: log_h()
         else:
             if chunk_type.lower() == "iend":  # For writing later
                 s_file.save_pos("IEND", -8)
@@ -102,7 +107,7 @@ def seal_read_png(s_file: SealFile) -> list[SealEntry]:
         chunk_size_b = s_file.read(4)
         chunk_type_b = list(s_file.read(4))
 
-    s_file.log("-------PNG------")
+    log("-------PNG------")
     s_file.reset()
     return s_file.seal_arr
 

@@ -2,12 +2,13 @@ from io import BufferedReader as File
 from os import path as os_path
 from shutil import move as os_move
 import re
-from typing import List, Tuple, Optional as Opt, NamedTuple, Dict
+from typing import List, Tuple, Optional as Opt, NamedTuple, Dict, Union
 import warnings
 from .seal_models import BytePos, SealByteRange
 from .seal_meta import SealMetadata
 from .seal_signer import SealSigner
 from .seal_verify import verify_seal
+from .log import log, set_debug
 
 # Stores the positions and metadata for the SEAL entries
 
@@ -19,20 +20,18 @@ class SealEntry(NamedTuple):
 class SealFile():
     r_file:         File
     r_file_path:    str
-    debug:          bool
     seal_arr:       List[SealEntry]
     saved_pos:      Dict[str, int]
     is_finalised:   bool
     
-    
     def __init__(self, path: str, debug=False):
         self.r_file_path = path
         self.r_file = open(path, "rb")
-        self.debug = debug
         # Initial Values:
         self.seal_arr     = []
         self.saved_pos    = {}
         self.is_finalised = False
+        if debug:   set_debug(debug)
 
     def __enter__(self):
         return self
@@ -70,11 +69,15 @@ class SealFile():
     
         # Get signature start + end pos (S+s)
         (S, s) = SealMetadata.get_offsets(seal_str)
+        log(f"Byte range: {S} -> {s}")
 
         self.seal_arr.append(SealEntry(block_start + S, block_start + s,seal))
 
         if self.is_finalised: raise ValueError(f"File is already finalised, cannot include any extra signatures")
         digest_bytes = self.fetch_byte_range(seal.b)
+        if seal.s:
+            log(f"Signature ({seal.sf}): {seal.s}")
+
 
         try:
             verify_seal(seal, digest_bytes)              # Throws ValueError if invalid
@@ -121,11 +124,11 @@ class SealFile():
 
         seal_entry = SealEntry(S + cur_pos + seal_data_offset, s + cur_pos +seal_data_offset, seal)
         if overwrite:  # Remove the old metadata at the same position
-            self.log(f"   Overwriting SEAL entry #{S_i}  ({seal_entry.start}:{seal_entry.end})")
+            log(f"   Overwriting SEAL entry #{S_i}  ({seal_entry.start}:{seal_entry.end})")
             self.seal_arr[S_i] = seal_entry
             return S_i
         else:
-            self.log(f"   Inserting new SEAL entry #{len(self.seal_arr)}  ({seal_entry.start}:{seal_entry.end})")
+            log(f"   Inserting new SEAL entry #{len(self.seal_arr)}  ({seal_entry.start}:{seal_entry.end})")
             self.seal_arr.append(seal_entry)
             return len(self.seal_arr) - 1
 
@@ -147,8 +150,8 @@ class SealFile():
 
         
         w_file_path = new_path if len(new_path) > 0 else SealFile.find_unique_path(self.r_file_path)
-        self.log(f"Reading from: {self.r_file_path}")
-        self.log(f"Writing to: {w_file_path}")
+        log(f"Reading from: {self.r_file_path}")
+        log(f"Writing to: {w_file_path}")
         w_file = open(w_file_path, 'wb')
         w_file.write(self.r_file.read(cur_pos))  # Copy file up to the current point
         w_file.write(bytes)
@@ -159,7 +162,7 @@ class SealFile():
         
         self.r_file.close()
         if len(new_path) == 0: # Move w_file to r_file_path
-            self.log(f"Moving {w_file_path} -> {self.r_file_path}")
+            log(f"Moving {w_file_path} -> {self.r_file_path}")
             os_move(w_file_path, self.r_file_path)
             w_file_path = self.r_file_path
 
@@ -178,12 +181,12 @@ class SealFile():
             e_end   = entry.end
             if entry.end > cur_pos:    e_end += shift
             if entry.start > cur_pos:  e_start += shift
-            self.log(f"Shifting ({entry.start, entry.end}) -> ({e_start, e_end})")
+            log(f"Shifting ({entry.start, entry.end}) -> ({e_start, e_end})")
             self.seal_arr[entry_i] = SealEntry(e_start, e_end, entry.seal)
         
         for key, value in self.saved_pos.items():
             if value >= cur_pos:        value += shift
-            self.log(f"Shifting {key} ({value-shift}) -> ({value})")
+            log(f"Shifting {key} ({value-shift}) -> ({value})")
             self.saved_pos[key] = value
         self.r_file.seek(cur_pos, 0)
         
@@ -219,9 +222,6 @@ class SealFile():
         self.r_file.seek(prev_pos, 0)
         
         return digest_bytes
-
-    def log(self, msg: str):
-        if self.debug: print(msg)
 
     def _file_pos(self, bp: BytePos, S_i: int, write_block: bool = False) -> int:
         # TODO: Remove

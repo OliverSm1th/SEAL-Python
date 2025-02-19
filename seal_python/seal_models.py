@@ -162,10 +162,6 @@ class SealByteRange:
 	def __str__(self) -> str:
 		return self.str_byte_range
 
-# class SealSignature(NamedTuple):  
-# 	sig_b: bytes
-# 	sig_d: Opt[datetime] = None
-
 
 SIG_FORMATS_T = Lit["hex", "HEX", "base64", "bin"]
 SIG_FORMATS = get_args(SIG_FORMATS_T)
@@ -297,8 +293,10 @@ class SealSignature():
 			'hex':		self.sig_b.hex(),
 			'HEX':		self.sig_b.hex().upper()
 		}.get(self.sf.signature_format, "")
-
-		return self.date_str() + ":" + sig_str
+		if self.date is None:
+			return sig_str
+		else:
+			return self.date_str() + ":" + sig_str
 	
 
 class SealKeyVersion:
