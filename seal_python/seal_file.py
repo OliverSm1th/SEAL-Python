@@ -240,14 +240,14 @@ class SealFile():
             raise RuntimeError(f"Invalid byte pos: {bp.literal} for SEAL block #{S_i}, no previous signature yet")
         
         # Replaces match case: (Support for Python <3.10)
-        cur_pos = {
-            'F': 0,
-            'f': -1,
-            'S': self.seal_arr[S_i].start,
-            's': self.seal_arr[S_i].end,
-            'P': self.seal_arr[S_i-1].start,
-            'p': self.seal_arr[S_i-1].end
-        }.get(bp.literal, 0)
+        cur_pos: int=0
+        lit = bp.literal
+        if   lit=='F': cur_pos=0
+        elif lit=='f': cur_pos=-1
+        elif lit=='S': cur_pos=self.seal_arr[S_i].start
+        elif lit=='s': cur_pos=self.seal_arr[S_i].end
+        elif lit=='P': cur_pos=self.seal_arr[S_i-1].start
+        elif lit=='p': cur_pos=self.seal_arr[S_i-1].end
 
         return cur_pos + bp.offset
 

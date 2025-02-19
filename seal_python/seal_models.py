@@ -331,12 +331,12 @@ class SealUID:
 
 def b64_to_bytes(str_64: str) -> bytes:
 	str_val = re.sub('={0,2}$', '', str_64)
-	str_val_pad = str_val + '='*(4-len(str_val)%4)
+	str_val_pad = str_val + '=='
 
 	try:
 		return base64.b64decode(str_val_pad, validate=True)
 	except BinError as e:
-		raise ValueError("Invalid base64: \""+str_val_pad+" ("+str(e)+")") from None
+		raise ValueError("Invalid base64: \""+str_val_pad+"\" ("+str(e)+")") from None
 
 
 class SealBase64:

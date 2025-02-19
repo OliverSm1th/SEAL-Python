@@ -30,7 +30,7 @@ def seal_sign_png(s_file: SealFile, s_data: SealSignData|SealMetadata, s_sign: S
         seal.set_byte_range(PNG_BYTE_RANGE)
 
     # Scan the file for prior signatures
-    s_file = seal_read_png(s_file)
+    seal_read_png(s_file)
     if s_file.is_finalised:  raise ValueError("File is already finalised")
     if not s_file.load_pos("IEND"): raise ValueError("File improperly formatted (missing IEND chunk)")
 
