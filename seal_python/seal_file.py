@@ -5,7 +5,7 @@ import re
 from typing import List, Tuple, Optional as Opt, NamedTuple, Dict, Union
 import warnings
 from .seal_models import BytePos, SealByteRange
-from .seal_meta import SealMetadata
+from .seal_meta import SealMetadata, SealVerifyData, SealSignData_F
 from .seal_signer import SealSigner
 from .seal_verify import verify_seal
 from .log import log, set_debug
@@ -68,7 +68,7 @@ class SealFile():
         seal.b.check(isFirst)
     
         # Get signature start + end pos (S+s)
-        (S, s) = SealMetadata.get_offsets(seal_str)
+        (S, s) = get_offsets(seal_str)
         log(f"Byte range: {S} -> {s}")
 
         self.seal_arr.append(SealEntry(block_start + S, block_start + s,seal))
@@ -78,20 +78,24 @@ class SealFile():
         if seal.s:
             log(f"Signature ({seal.sf}): {seal.s}")
 
+        hash = seal.da_hash(digest_bytes)
+        seal_v = SealVerifyData.fromData(seal)
 
         try:
-            verify_seal(seal, digest_bytes)              # Throws ValueError if invalid
+            verify_seal(seal_v, hash)              # Throws ValueError if invalid
         except ValueError as e:
             warnings.warn(f"  Invalid SEAL- {str(e)}")
             self.seal_arr.pop()  # Remove invalid SEAL recordseal_num-1
             return (False, seal)  
         return (True, seal)
     
-    def sign_seal_meta(self, seal: SealMetadata, signer: SealSigner) -> SealMetadata:
+    def sign_seal_data(self, seal_data: SealSignData_F, signer: SealSigner) -> SealMetadata:
         # Fetch byte range:
-        digest_bytes = self.fetch_byte_range(seal.b)
+        digest_bytes = self.fetch_byte_range(seal_data.b)
+        digest_hash = seal_data.da_hash(digest_bytes)
 
-        return signer.sign(seal, digest_bytes)
+        signature = signer.sign(seal_data, digest_hash)
+        return SealMetadata.fromData(seal_data, sig=signature)
 
 
     def insert_seal(self, head: bytes, seal: SealMetadata, foot: bytes, new_path: str = "", overwrite: bool = False):
@@ -120,7 +124,7 @@ class SealFile():
         
         # Add the seal metadata to seal_arr
         seal_str = seal.toWrapper()
-        (S, s) = SealMetadata.get_offsets(seal_str)
+        (S, s) = get_offsets(seal_str)
 
         seal_entry = SealEntry(S + cur_pos + seal_data_offset, s + cur_pos +seal_data_offset, seal)
         if overwrite:  # Remove the old metadata at the same position
@@ -340,3 +344,25 @@ class SealFile():
         if not(last_seal.b.includes_lit('f')):
             warnings.warn(f"SEAL record #{seal_i}: Digest byte range ends at: \'{last_seal.b.str_end()}\', should be \'f\' for full coverage")
 
+def get_offsets(seal_str: str, d_digest: bool = False) -> Tuple[int, int]:
+		"""Get the start and end position of the signature excluding any quotation marks
+		i.e: <seal...s="~sig~"/>   (~ = S,s)
+
+		Args:
+			seal_str (str) \n
+			d_digest (bool): 
+				True = Exclude any date or user from the signature range  i.e: <seal...s="date:user:~sig~"/>
+				False = Include them in the signature range i.e: <seal...s="~date:user:sig~"/>
+
+		Returns:
+			Tuple[int, int]: _description_
+		"""
+		S = seal_str.index(" s=") + 3
+		
+		s = len(seal_str) - 2
+		if seal_str[S] == seal_str[s-1] and seal_str[S] in ['\'', '\"']:  
+			S += 1; s -= 1
+		
+		if seal_str[S:s].count(':') > 0 and d_digest:	# Move signature start past date + user:    date:user:_sig
+			S += seal_str[S:s].rfind(':') + 1
+		return (S, s)

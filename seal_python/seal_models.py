@@ -1,5 +1,8 @@
-from typing import cast, Literal as Lit, Optional as Opt, get_args, List, Tuple, Union
+from typing import cast, Literal as Lit, Protocol, Optional as Opt, get_args, List, Tuple, Union
 from typing_extensions import Self   # Allows < Python3.11 to work 
+from Crypto.Hash import SHA256, SHA512, SHA1
+from math import log2, floor, ceil
+
 import re
 import base64
 from binascii import Error as BinError
@@ -10,6 +13,20 @@ import warnings
 def warning_format(msg, category, filename, lineno, line=None):
 	return f"WARNING: {msg}\n"
 warnings.formatwarning = warning_format
+
+
+
+# Structure of Cryto.Hash objects (i.e SHA256/512/1):
+class Hash(Protocol):
+	digest_size: int
+	block_size: int
+	oid: str
+	def __init__(self, data=None) -> None: ...
+	def copy(self) -> Self: ...
+	def digest(self) -> bytes: ...
+	def hexdigest(self) -> str: ...
+	def new(self,data=None) -> Self: ...
+	def update(self,data:bytes|bytearray|memoryview) -> None: ...
 
 
 BYTE_LIT_ORDER = "FPpSsf"
@@ -162,12 +179,57 @@ class SealByteRange:
 	def __str__(self) -> str:
 		return self.str_byte_range
 
+BIN_FORMATS_T = Lit["hex", "HEX", "base64", "bin"]
+BIN_FORMATS = get_args(BIN_FORMATS_T)
 
-SIG_FORMATS_T = Lit["hex", "HEX", "base64", "bin"]
-SIG_FORMATS = get_args(SIG_FORMATS_T)
+class SealBinaryFormat:
+	format: BIN_FORMATS_T
+	def __init__(self, format: str):
+		if not format in BIN_FORMATS:
+			raise ValueError("should be one of: \""+("\", \"".join(BIN_FORMATS)+"\""))
+		self.format = cast(BIN_FORMATS_T, format)
+	
+	def binFromStr(self, bin_str: str) -> bytes:
+		print(f"Format: {self.format}")
+		if self.format == "base64":
+			no_pad = re.sub(r'[\s]+$', '', bin_str)
+			return b64_to_bytes(no_pad)
+		elif self.format == "bin":
+			if not(re.match("^[01]+$", bin_str)): 
+				raise ValueError("Invalid binary signature, must only contain 0 or 1")
+			return int(bin_str, 2).to_bytes((len(bin_str)+7)//8)  # From https://stackoverflow.com/a/32676625
+		elif self.format == "hex" or "HEX":
+			m = "a-f" if self.format == "hex" else "A-F"
+			if not(re.match(f"^[0-9{m}]+$", bin_str)):
+				raise ValueError(f"Invalid hex signature, must only contain the following characters: [0-9{m}]")
+			if len(bin_str)%4 != 0:
+				raise ValueError(f"Invalid hex signature, must be a two-byte hex (len divisible by 4)")
+			return bytes.fromhex(bin_str.upper())
+		else:
+			return bytes()
+	def binToStr(self, bin: bytes) -> str:
+		return {
+			'base64': 	base64.b64encode(bin).decode('ascii'),
+			'bin': 		"".join(["{:08b}".format(byte) for byte in bin]),
+			'hex':		bin.hex(),
+			'HEX':		bin.hex().upper()
+		}.get(self.format, "")
+	
+	def base(self) -> int:
+		return {
+			'base64': 	64,
+			'bin': 		1,
+			'hex':		16,
+			'HEX':		16
+		}.get(self.format, 0)
+	
+	def __str__(self) -> str:
+		return self.format
+
+# TODO: Move defaults to within seal_model methods as people might initialise them directly + they should take their defaults here
 class SealSignatureFormat:
 	date_format: Opt[int] = None
-	signature_format: SIG_FORMATS_T
+	signature_format: SealBinaryFormat
 	
 	def __init__(self, sf: str) -> None:
 		sig_str = sf
@@ -183,17 +245,29 @@ class SealSignatureFormat:
 
 			self.date_format = int(sig_d[4]) if len(sig_d) == 5 else 0
 
-		if not sig_str in SIG_FORMATS:
-			raise ValueError("Invalid signature format, should be one of: 'hex', 'HEX', 'base64', 'bin'")
-		self.signature_format = cast(SIG_FORMATS_T, sig_str)
-		
+		try:
+			self.signature_format = SealBinaryFormat(sig_str)
+		except ValueError as e:
+			raise ValueError(f"Invalid signature format \"{sig_str}\", {e}")
+	
+	def sig_len(self, key_len_bits: int) -> int:
+		key_len = floor(key_len_bits / log2(self.signature_format.base()))
+		if str(self.signature_format) == "base64":	# Round up to a multiple of 4 for padding
+			key_len = ceil(key_len/4)*4
+		date_len = self.date_len()
+		if date_len > 0:
+			return date_len + key_len + 1
+		else:
+			return key_len
+
+
 	def __str__(self) -> str:
 		output = ""
 		if(self.date_format != None):
 			output += "date"
 			if self.date_format > 0: output += str(self.date_format)
 			output += ":"
-		output += self.signature_format
+		output += str(self.signature_format)
 		return output
 
 	# Helper functions:
@@ -230,13 +304,13 @@ class SealSignature():
 	date: Opt[datetime]	# Datetime representation of the date component
 	sf: SealSignatureFormat  # Format used
 
-	def __init__(self, sf: SealSignatureFormat, sig_b: bytes, date: Opt[datetime] = None):
+	def __init__(self, sig_b: bytes, sf: SealSignatureFormat, date: Opt[datetime] = None):
 		self.sf = sf
 		self.sig_b = sig_b
 		self.date  = date
 	
 	@classmethod
-	def fromStr(cls, sf: SealSignatureFormat, sig_str: str):
+	def fromStr(cls, sig_str: str, sf: SealSignatureFormat):
 		sig_str  = sig_str
 		sig_date = None
 		# Parse the date
@@ -261,24 +335,9 @@ class SealSignature():
 		
 		# Parse the signature itself
 		sig_format = sf.signature_format
-		if sig_format == "base64":
-			no_pad = re.sub(r'[\s]+$', '', sig_str)
-			sig_b = b64_to_bytes(no_pad)
-		elif sig_format == "bin":
-			if not(re.match("^[01]+$", sig_str)): 
-				raise ValueError("Invalid binary signature, must only contain 0 or 1")
-			sig_b = int(sig_str, 2).to_bytes((len(sig_str)+7)//8)  # From https://stackoverflow.com/a/32676625
-		elif sig_format == "hex" or "HEX":
-			m = "a-f" if sf.signature_format == "hex" else "A-F"
-			if not(re.match(f"^[0-9{m}]+$", sig_str)):
-				raise ValueError(f"Invalid hex signature, must only contain the following characters: [0-9{m}]")
-			if len(sig_str)%4 != 0:
-				raise ValueError(f"Invalid hex signature, must be a two-byte hex (len divisible by 4)")
-			sig_b = bytes.fromhex(sig_str.upper())
-		else:
-			sig_b = bytes()
+		sig_b = sig_format.binFromStr(sig_str)
 
-		return cls(sf, sig_b, sig_date)
+		return cls(sig_b, sf, sig_date)
 
 	def date_str(self) -> str:
 		if self.date is None: 
@@ -287,17 +346,11 @@ class SealSignature():
 			return self.sf.format_date(self.date)
 	
 	def __str__(self) -> str:
-		sig_str = {
-			'base64': 	base64.b64encode(self.sig_b).decode('ascii'),
-			'bin': 		"".join(["{:08b}".format(byte) for byte in self.sig_b]),
-			'hex':		self.sig_b.hex(),
-			'HEX':		self.sig_b.hex().upper()
-		}.get(self.sf.signature_format, "")
+		sig_str = self.sf.signature_format.binToStr(self.sig_b)
 		if self.date is None:
 			return sig_str
 		else:
 			return self.date_str() + ":" + sig_str
-	
 
 class SealKeyVersion:
 	key_version: str
@@ -328,15 +381,19 @@ class SealUID:
 		if not(re.match("^[^\"\'\\s]+$|^$", uid)):
 			raise ValueError("Unique identifier cannot include the following characters: [\"\'] or any whitespace")
 
-
+# TODO: Understand base64
 def b64_to_bytes(str_64: str) -> bytes:
 	str_val = re.sub('={0,2}$', '', str_64)
-	str_val_pad = str_val + '=='
+	# str_val_pad = str_val + '=='#if (len(str_val)%3 != 0) else str_val
+	pad_len = -len(str_val) % 4
+	if pad_len == 3:
+		raise ValueError(f"Invalid base64: \"{str_val}\" (invalid length)")
+	str_val_pad = str_val + ('=' * pad_len)
 
 	try:
 		return base64.b64decode(str_val_pad, validate=True)
 	except BinError as e:
-		raise ValueError("Invalid base64: \""+str_val_pad+"\" ("+str(e)+")") from None
+		raise ValueError(f"Invalid base64: \"{str_val_pad}\" ({e})") from None
 
 
 class SealBase64:
@@ -372,6 +429,69 @@ KEY_ALGS = get_args(KEY_ALGS_T)
 
 DA_ALGS_T = Lit[ 'sha256', 'sha512', 'sha1']
 DA_ALGS = get_args(DA_ALGS_T)
+DA_DEF : DA_ALGS_T 	= "sha256"
+DF_DEF = "base64"
+
+class SealDigestInfo():
+	digest_format:  SealBinaryFormat
+	digest_algorithm: DA_ALGS_T
+	def __init__(self, digest_format: Opt[str|SealBinaryFormat]=DF_DEF, digest_algorithm: Opt[str]=DA_DEF) -> None:
+		if digest_format is None: raise RuntimeError("Invalid digest format")
+		
+		try:
+			self.digest_format = digest_format if isinstance(digest_format, SealBinaryFormat) else SealBinaryFormat(digest_format)
+		except ValueError as e:
+			raise ValueError(f"Invalid digest format \"{digest_format}\", {e}")
+
+		da = digest_algorithm
+		if not da in DA_ALGS:	raise ValueError("Invalid digest algorithm, should be one of: \""+("\", \"".join(DA_ALGS)+"\""))
+		else: da = cast(DA_ALGS_T, da)
+		self.digest_algorithm = da
+	@classmethod
+	def fromStr(cls, d_info: Opt[str]):
+		df = None; da = None
+		if d_info == None: return cls(None, None)
+		if d_info.count(":") == 1:
+			(df, da) = d_info.split(":")
+		elif d_info in DA_ALGS:
+			da = d_info
+		elif d_info in BIN_FORMATS:
+			df = d_info
+		else:
+			raise ValueError("Invalid digest info, expecting \"format:algorithm\"")
+		return cls(df, da)
+	
+	def hashToStr(self, hash: Hash) -> str:
+		return self.digest_format.binToStr(hash.digest())
+	def hashFromStr(self, hash_s: str) -> Hash:
+		da = self.digest_algorithm
+		hash_b = self.digest_format.binFromStr(hash_s)
+		if da == "sha1":
+			hash : Hash = SHA1.SHA1Hash()
+		elif da == "sha256":
+			hash = SHA256.SHA256Hash()
+		elif da == "sha512":
+			hash = SHA512.SHA512Hash()
+		else:
+			raise RuntimeError("Invalid digest algorithm: "+da)
+		return hash.new(hash_b)
+
+	def hash(self, digest_str: str) -> Hash:
+		digest_b = self.digest_format.binFromStr(digest_str)
+		return SealDigestInfo.hash_b(digest_b, self.digest_algorithm)
+
+	@classmethod
+	def hash_b(cls, digest_b: bytes, da: DA_ALGS_T) -> Hash:
+		if da == "sha1":
+			return SHA1.new(digest_b)
+		elif da == "sha256":
+			return SHA256.new(digest_b)
+		elif da == "sha512":
+			return SHA512.new(digest_b)
+		raise RuntimeError("Invalid digest algorithm: "+da)
+
+	def __str__(self) -> str:
+		return f"{self.digest_format}:{self.digest_algorithm}"
 
 
 OPT_QUOT = True	  	# Include quotes even if the value doesn't need them

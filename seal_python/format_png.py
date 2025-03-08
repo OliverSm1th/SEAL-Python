@@ -1,7 +1,7 @@
-from .seal_meta import SealMetadata, SealSignData
+from .seal_meta import SealSignData_, SealSignData_F
 from .seal_file import  SealEntry, SealFile
-from .seal_signer import SealDummySign, SealLocalSign, SealRemoteSign, SealSigner
-from .log import log, log_h, debug as is_debug
+from .seal_signer import SealDummySign, SealSigner
+from .log import log, log_h
 
 import re
 from typing import List
@@ -10,12 +10,12 @@ from io import BufferedReader as File
 
 PNG_BYTE_RANGE = "F~S,s~s+2,s+7~f"
 
-def seal_sign_png(s_file: SealFile, s_data: SealSignData|SealMetadata, s_sign: SealSigner, new_path: str="") -> None:
+def seal_sign_png(s_file: SealFile, s_data: SealSignData_, s_sign: SealSigner, new_path: str="") -> None:
     """Inserts a SEAL metadata entry into a PNG file
 
     Args:
         s_file (SealFile): The PNG file
-        s_data (SealSignData): Data to include in the SEAL entry
+        s_data (SealSignData_): Data to include in the SEAL entry
         s_sign (SealSigner): Signing method
         new_path (str): Location for the signed file (none = overwrite previous file)
 
@@ -23,11 +23,12 @@ def seal_sign_png(s_file: SealFile, s_data: SealSignData|SealMetadata, s_sign: S
         # TODO: Figure out when/how it can error
         ValueError: If the file is invalid (i.e. not a PNG) or malformed
     """
-    if isinstance(s_data, SealSignData):
-        seal = SealMetadata.fromData(s_data, byte_range=PNG_BYTE_RANGE)
-    else:
-        seal = s_data
-        seal.set_byte_range(PNG_BYTE_RANGE)
+    # if isinstance(s_data, SealSignDataStr):
+    #     seal = SealMetadata.fromDataStr(s_data, byte_range=PNG_BYTE_RANGE)
+    # else:
+    #     seal = s_data
+    #     seal.set_byte_range(PNG_BYTE_RANGE)
+    seal = SealSignData_F.fromData(s_data, byte_range=PNG_BYTE_RANGE)
 
     # Scan the file for prior signatures
     seal_read_png(s_file)
@@ -37,13 +38,13 @@ def seal_sign_png(s_file: SealFile, s_data: SealSignData|SealMetadata, s_sign: S
     
     # Generate the dummy signature
     sig_size = s_sign.signature_size(seal)
-    dummy_seal = s_file.sign_seal_meta(seal, SealDummySign(sig_size))
+    dummy_seal = s_file.sign_seal_data(seal, SealDummySign(sig_size))
     log(f"Signing: {dummy_seal} (dummy)")
     dummy_chunk = generate_seal_chunk(dummy_seal.toWrapper().encode())
     S_i = s_file.insert_seal_block(dummy_chunk, dummy_seal, 8, new_path)
 
     # Generate the real signature
-    signed_seal = s_file.sign_seal_meta(seal, s_sign)
+    signed_seal = s_file.sign_seal_data(seal, s_sign)
     log(f"Signing: {signed_seal}")
     chunk_b = generate_seal_chunk(signed_seal.toWrapper().encode())
     s_file.insert_seal_block(chunk_b, signed_seal, 8, S_i=S_i)
@@ -158,7 +159,7 @@ SIGNED_PNG = f"./tests/seal-sign{num}.png"
 with SealFile(TEST_PNG) as s_file:
     # seal_read_png(s_file)
 
-    s_data = SealSignData(
+    s_data = SealSignData_(
         d="***REMOVED***" if useLocal else "signmydata.com",
         sf="base64",
         # id="***REMOVED***"

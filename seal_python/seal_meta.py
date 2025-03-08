@@ -1,15 +1,15 @@
 from datetime import datetime
 import re
 from typing_extensions import Any, Self   # Allows < Python3.11 to work 
-from typing import NamedTuple, Optional as Opt, Protocol, Tuple, cast, get_type_hints
-from Crypto.Hash import SHA256, SHA512, SHA1
+from typing import NamedTuple, Optional as Opt, Tuple, cast, get_type_hints, ClassVar
 import Crypto.PublicKey.RSA as RSA
 from Crypto.Signature import pkcs1_15
-from .seal_models import  (SealByteRange, SealSignature, SealSignatureFormat, SealKeyVersion, SealUID, SealBase64,
+from .seal_models import  (SealByteRange, SealSignature, SealSignatureFormat, SealKeyVersion, SealUID, SealBase64, Hash, SealDigestInfo,
 						  KEY_ALGS_T, KEY_ALGS, DA_ALGS_T, DA_ALGS, get_fields, clean_str, format_str)
+from dataclasses import dataclass, asdict, field, fields
 
 # Default Values:
-SEAL_DEF = 1
+SEAL_DEF = "1"
 
 KA_DEF : KEY_ALGS_T = "rsa"
 KV_DEF : str		= "1"
@@ -33,101 +33,345 @@ REQ = {
 	'd': 'domain name'
 }
 
-# Structure of Cryto.Hash objects (i.e SHA256/512/1):
-class Hash(Protocol):
-	digest_size: int
-	block_size: int
-	oid: str
-	def __init__(self, data=None) -> None: ...
-	def copy(self) -> Self: ...
-	def digest(self) -> bytes: ...
-	def hexdigest(self) -> str: ...
-	def new(self,data=None) -> Self: ...
-	def update(self,data:bytes|bytearray|memoryview) -> None: ...
-
-class SealSignData(NamedTuple):
-	"""All data provided by the user for signing"""
+# TODO: Explore using dataclass better (look at factories for new + SealDNS)
+@dataclass(kw_only=True)
+class SealBaseData:
+	# Basic Seal datatype, describing the minimum data required to authenticate a signature (from a digest)
 	# Required:
-	d:	  str					# Domain Name
-
-	# Optional: (with default values)
-	ka:   KEY_ALGS_T = KA_DEF 	# Key Algorithm 
-	kv:   str		 = KV_DEF 	# Key Version
-	da:   DA_ALGS_T	 = DA_DEF	# Digest Algorithm
-	uid:  str		 = UID_DEF	# UUID
-	sf:   str		 = SF_DEF	# Signature Format
-	#             (no default)
-	id:   		Opt[str] = None # Account identifier
-	copyright: 	Opt[str] = None	# Copyright information
-	info: 		Opt[str] = None	# Textual comment information
-	sl:   		Opt[int] = None	# Signature Length (not implemented)
-
-	def check(self):
-		if not self.ka in KEY_ALGS: raise ValueError("Invalid key algorithm: "+self.ka)
-		SealKeyVersion.check(self.kv)
-		if not self.da in DA_ALGS:  raise ValueError("Invalid key algorithm: "+self.da)
-		SealUID.check(self.uid)
-		SealSignatureFormat.check(self.sf)
-
-
-class SealMetadata():
-	# Required:
-	seal: int					# SEAL Version		(!)
+	seal: str = SEAL_DEF		# SEAL Version
 	d:	  str					# Domain Name
 
 	# Optional:  (with default values)
-	ka:   KEY_ALGS_T   			# Key Algorithm
-	kv:   SealKeyVersion		# Key Version
-	da:   DA_ALGS_T				# Digest Algorithm
-	b:    SealByteRange	 		# Digest Byte Range	(!)
-	uid:  SealUID				# UUID/Date
-	sf:   SealSignatureFormat	# Signature Format
+	ka:   KEY_ALGS_T  	= KA_DEF							# Key Algorithm
+	kv:   SealKeyVersion= field(default_factory=lambda: SealKeyVersion(KV_DEF))			# Key Version
+	uid:  SealUID		= field(default_factory=lambda: SealUID(UID_DEF))				# UUID/Date
+	sf:   SealSignatureFormat = field(default_factory=lambda: SealSignatureFormat(SF_DEF)) # Signature Format
 	#             (no default)
-	id:   		Opt[str]  		# Account identifier
-	copyright: 	Opt[str]		# Copyright information
-	info: 		Opt[str]		# Textual comment information
-	sl:   		Opt[int] 		# Signature Length (not implemented)
+	id:   		Opt[str] = None								# Account identifier
+	def __post_init__(self):
+		if self.seal != SEAL_DEF: raise ValueError(f"Invalid SEAL version: \"{self.seal}\" ({type(self.seal).__name__}) != \"{SEAL_DEF}\" ({type(SEAL_DEF).__name__})")
 
-	# Required for verification, generated while signing
-	s:    Opt[SealSignature]    # Signature			(!)
-
-
-	def __init__(self,	seal: int,			d:    str,
-			  
-			  			ka:	 KEY_ALGS_T	= KA_DEF,	kv: str = KV_DEF,		
-						da:  DA_ALGS_T	= DA_DEF,	b: 	str = B_DEF,
-						uid: str		= UID_DEF,	sf:	str = SF_DEF,
-
-						id:   Opt[str]	=None,		copyright: 	Opt[str]=None,
-						info: Opt[str]	=None,		sl:			Opt[int]=None,
-						
-						s:    Opt[str]	=None	):
-		self.seal = seal
-		
-		if ka in KEY_ALGS:  self.ka = cast(KEY_ALGS_T, ka)
-		else: raise ValueError("Invalid key algorithm: "+ka)
-
-		self.d    = d
-		self.kv   = SealKeyVersion(kv)
-
-		if da in DA_ALGS: 	self.da = cast(DA_ALGS_T, da)
-		else:  raise ValueError("Invalid key version: "+kv)		
-		
-		self.b    = SealByteRange(b)
-		self.uid  = SealUID(uid)
-		self.sf   = SealSignatureFormat(sf)
-		self.s    =	SealSignature.fromStr(self.sf, s) if s is not None else s
-		self.id   = id
-		self.copyright = copyright
-		self.info = info
-		self.sl   = sl  # (not implemented)
+	@classmethod
+	def new(cls, 	d:   str,  					seal: Opt[str]= SEAL_DEF, 
+		 			ka:   Opt[str] = KA_DEF,	kv:  Opt[str] = KV_DEF,		uid: Opt[str] = UID_DEF,	
+					sf:	  Opt[str] = SF_DEF,	id:  Opt[str] = None):
+		params = locals()
+		del params["cls"]
+		params = clean_p(params)
+		return cls(**cls._load(**params))
 	
 	@classmethod
-	def fromData(cls, data: SealSignData, seal: int = SEAL_DEF, byte_range: str = B_DEF, signature: Opt[str] = None) -> Self:
-		data_dict = data._asdict()
-		data_dict['seal'] = seal
-		data_dict['b']    = byte_range
-		data_dict['s']    = signature
+	def _load(cls,**params):
+		# Convert values from str -> relevant object
+		# if not params["seal"].isnumeric():  raise ValueError("Invalid seal: "+params["seal"])
+		# params["seal"] = int(params["seal"])
+
+		ka = cls.ka_cast(params["ka"])
+		if ka is None: raise ValueError("Invalid key algorithm: "+params["ka"])
+		params["ka"] = ka
+
+		params["kv"] = SealKeyVersion(params["kv"])
+		
+		params["uid"] = SealUID(params["uid"])
+		params["sf"] = SealSignatureFormat(params["sf"])
+
+		return params
+	
+	@classmethod
+	def ka_cast(cls, ka: str) -> Opt[KEY_ALGS_T]:
+		if ka in KEY_ALGS: return cast(KEY_ALGS_T, ka)
+		return None
+	
+	def ka_encrypt(self, private_key: SealBase64, digest: Hash) -> bytes:
+		"""Use the key algorithm and private key to encrypt the digest
+
+		Args:
+			private_key (SealBase64)
+			digest (Hash): From the `Cryto.Hash` package.
+
+		Raises:
+			RuntimeError: if the key algorithm isn't supported.
+			ValueError: if the key is invalid.
+
+		Returns:
+			bytes: the encrypted digest"""
+		if self.ka == "rsa":
+			rsa_key = RSA.import_key(private_key.val)
+			try:
+				return pkcs1_15.new(rsa_key).sign(digest)
+			except ValueError:
+				raise ValueError("Key is too short")
+			except TypeError:
+				raise ValueError("Key provided has no private component")
+		raise RuntimeError("Invalid key algorithm: "+self.ka)
+
+	def ka_key_size(self, private_key: SealBase64) -> int:
+		return SealBaseData.ka_key_size_s(self.ka, private_key)
+	def sig_size(self, private_key: SealBase64) -> int:
+		return SealBaseData.sig_size_s(self.ka, self.sf, private_key)
+	
+	@classmethod
+	def ka_key_size_s(cls, ka: KEY_ALGS_T, private_key: SealBase64) -> int:
+		if ka == "rsa":
+			return RSA.import_key(private_key.val).size_in_bits()
+		raise RuntimeError("Invalid key algorithm: "+ka)
+	@classmethod
+	def sig_size_s(cls, ka: KEY_ALGS_T, sf: SealSignatureFormat, private_key: SealBase64) -> int:
+		ka_b_size = cls.ka_key_size_s(ka, private_key)
+		return sf.sig_len(ka_b_size)
+
+	def toDict(self) -> dict[str, str]:
+		attr_dict = asdict(self)
+		str_dict : dict[str, str] = {}
+		for key, value in attr_dict.items():
+			if value is None: continue
+
+			str_val = str(value)
+			if len(str_val) == 0: continue
+			if key in DEF and DEF[key] == str_val and not key in REQ: continue
+			str_dict[key] = str_val
+		return str_dict
+	
+	@classmethod
+	def default(cls):
+		return {k: v for k,v in DEF.items() if not(k in ["b", "da"])}
+	
+	def __str__(self) -> str:
+		options = []
+		attr_dict = self.toDict()
+		
+		attr_order = list(attr_dict.keys())
+		
+		attr_order.sort(key=lambda k: -1 if k == 'seal' else 99999 if k == 's' else len(str(attr_dict[k])))
+
+		for attr in attr_order:
+			str_val = format_str(attr_dict[attr])
+			
+			options.append(attr + "=" + str_val)
+		return ' '.join(options)
+
+
+# class SealSignData(SealBaseData):
+# 	# Optional:   (no default)
+# 	copyright: 	Opt[str] = None		# Copyright information
+# 	info: 		Opt[str] = None		# Textual comment information
+# 	sl:   		Opt[str] = None		# Signature Length (not implemented)	
+
+
+# 	@classmethod
+# 	def new(cls, 	seal: str,	d:   str,	 ka:	 	Opt[str] = KA_DEF,  kv:  	Opt[str] = KV_DEF,  uid: Opt[str] = UID_DEF,	sf:	  Opt[str] = SF_DEF,
+# 		 			id:  Opt[str] = None,  	 copyright: Opt[str] = None,	info: 	Opt[str] = None,	sl:	 Opt[int] = None):
+# 		params = locals()
+# 		del params["cls"]
+# 		return cls(**cls._load(**params))
+	
+# 	@classmethod
+# 	def _load(cls,**params):
+# 		params = super()._load(**params)
+# 		return params
+	
+# 	@classmethod
+# 	def fromData(cls, data: SealBaseData):
+# 		data_dict = asdict(data)
+# 		return cls(**data_dict)
+
+@dataclass(kw_only=True)
+class SealSignData(SealBaseData):
+	# The minimum data required to sign an image (digest algorithm allows for double digest)
+	da:   DA_ALGS_T	  	= DA_DEF				 # Digest Algorithm
+	@classmethod
+	def new(cls, 	d:   str,				 seal: Opt[str]= SEAL_DEF, 		ka:	 Opt[str] = KA_DEF,  
+		 			kv:  Opt[str] = KV_DEF,  uid: Opt[str] = UID_DEF,		sf:	  Opt[str] = SF_DEF,
+		 			id:  Opt[str] = None,  	 da:   Opt[str] = DA_DEF):
+		params = locals()
+		del params["cls"]
+		params = clean_p(params)
+		return cls(**cls._load(**params))
+	@classmethod
+	def _load(cls,**params):
+		params = super()._load(**params)
+		
+		da = cls.da_cast(params["da"])
+		if da is None: raise ValueError("Invalid digest algorithm: "+params["da"])
+		params["da"] = da
+
+		return params
+	@classmethod
+	def fromData(cls, data: SealBaseData, **params):
+		# From SealBaseData:
+		#		da: DA_ALGS_T = DA_DEF
+
+		data_dict = asdict(data)
+
+		da = cls.da_cast(params["da"])
+		if da is None: raise ValueError("Invalid digest algorithm: "+params["da"])
+		data_dict["da"] = da
+
+		return cls(**data_dict)
+	
+	def da_hash(self, file_bytes: bytes) -> Hash:
+		return SealDigestInfo.hash_b(file_bytes, self.da)
+	
+	@classmethod
+	def da_cast(cls, da: str) -> Opt[DA_ALGS_T]:
+		if da in DA_ALGS: return cast(DA_ALGS_T, da)
+		return None
+	@classmethod
+	def default(cls):
+		return {k: v for k,v in DEF.items() if not(k in ["b"])}
+
+@dataclass(kw_only=True)
+class SealSignData_(SealSignData):
+	# Extended data for signing adding optional textual information
+	# Optional:   (no default)
+	copyright: 	Opt[str] = None		# Copyright information
+	info: 		Opt[str] = None		# Textual comment information
+	sl:   		Opt[str] = None		# Signature Length (not implemented)	
+	@classmethod
+	def new(cls, 	d:   str,				 seal: Opt[str]= SEAL_DEF, 		ka:	 Opt[str] = KA_DEF,  
+		 			kv:  Opt[str] = KV_DEF,  uid: Opt[str] = UID_DEF,		sf:	  Opt[str] = SF_DEF,
+		 			id:  Opt[str] = None,  	 da:   Opt[str] = DA_DEF,
+					
+					copyright: Opt[str] = None,	info: 	Opt[str] = None,	sl:	 Opt[str] = None):
+		params = locals()
+		del params["cls"]
+		params = clean_p(params)
+		return cls(**cls._load(**params))
+	@classmethod
+	def _load(cls,**params):
+		params = super()._load(**params)
+		return params
+	@classmethod
+	def fromData(cls, data: SealBaseData, **params):
+		# From SealBaseData:
+		#		da: DA_ALGS_T = DA_DEF
+		
+		if not isinstance(data, SealSignData):
+			data = SealSignData.fromData(data, **params)
+		
+		data_dict = asdict(data)
+		return cls(**data_dict)
+	
+	def da_hash(self, file_bytes: bytes) -> Hash:
+		return SealDigestInfo.hash_b(file_bytes, self.da)
+	
+	@classmethod
+	def da_cast(cls, da: str) -> Opt[DA_ALGS_T]:
+		if da in DA_ALGS: return cast(DA_ALGS_T, da)
+		return None
+
+@dataclass(kw_only=True)
+class SealSignData_F(SealSignData_):
+	# Data for signing within a file. This includes the byte range which is used to generate a digest
+	b:    SealByteRange = SealByteRange(B_DEF)	 # Digest Byte Range
+	@classmethod
+	def new(cls, 	d:   str,				 seal: Opt[str]= SEAL_DEF, 		ka:	 Opt[str] = KA_DEF,  
+		 			kv:  Opt[str] = KV_DEF,  uid:  Opt[str] = UID_DEF,		sf:	  Opt[str] = SF_DEF,
+		 			id:  Opt[str] = None,  	 da:   Opt[str] = DA_DEF,		copyright: Opt[str] = None,	
+					info:Opt[str] = None, 	 sl:   Opt[str] = None,
+					
+					b: 	  str  = B_DEF):
+		params = locals()
+		del params["cls"]
+		params = clean_p(params)
+		return cls(**cls._load(**params))
+	@classmethod
+	def _load(cls,**params):
+		params = super()._load(**params)
+
+		params["b"] = SealByteRange(params["b"])
+
+		return params
+	@classmethod
+	def fromData(cls, data: SealBaseData, **params):
+		# From SealBaseData:
+		#		da: DA_ALGS_T = DA_DEF
+		#		 + byte_range
+		# From SealSignData/SealSignData_:
+		# 		byte_range: str|SealByteRange = B_DEF
+
+		if not isinstance(data, SealSignData_):
+			data = SealSignData_.fromData(data, **params)
+
+		byte_range: str|SealByteRange = params["byte_range"] if "byte_range" in params else B_DEF
+
+		data_dict = asdict(data)
+		data_dict["b"] = byte_range if isinstance(byte_range, SealByteRange) else SealByteRange(byte_range)
+		return cls(**data_dict)
+	@classmethod
+	def default(cls):
+		return DEF
+
+# class SealVerifyA(SealSignData):
+# 	# Required for verification, generated while signing
+# 	s:    Opt[SealSignature] = None   	 		# Signature	
+# 	@classmethod
+# 	def new(cls, 	seal: str,				d:   str,					ka:	 KEY_ALGS_T	= KA_DEF,	
+# 		 			kv:   str = KV_DEF,		da:  DA_ALGS_T= DA_DEF,		uid: str		= UID_DEF,	
+# 					sf:	  str = SF_DEF,		id:  Opt[str] = None,		copyright: Opt[str]=None,
+# 					info: Opt[str]	=None,	sl:	 Opt[str] = None,
+					
+# 					s:    Opt[str] = None):
+# 		params = locals()
+# 		del params["cls"]
+# 		return cls(**cls._load(**params))
+# 	@classmethod
+# 	def _load(cls,**params):
+# 		params = super()._load(**params)
+# 		params["s"] = SealSignature.fromStr(params["s"], params["sf"]) if params["s"] is not None else None
+# 		return params
+
+@dataclass(kw_only=True)
+class SealMetadata(SealSignData_F):
+	# Full metadata which can be saved into the file
+	s:    SealSignature   	 		# Signature	
+	
+	@classmethod
+	def new(cls, 	d:   str,				 seal: Opt[str]= SEAL_DEF, 		ka:	 Opt[str] = KA_DEF,  
+		 			kv:  Opt[str] = KV_DEF,  uid:  Opt[str] = UID_DEF,		sf:	  Opt[str] = SF_DEF,
+		 			id:  Opt[str] = None,  	 da:   Opt[str] = DA_DEF,		copyright: Opt[str] = None,	
+					info:Opt[str] = None, 	 sl:   Opt[str] = None,
+					
+					b: 	  str  = B_DEF, 	s: str=""):
+		params = locals()
+		del params["cls"]
+		params = clean_p(params)
+		return cls(**cls._load(**params))
+
+	@classmethod
+	def _load(cls, **params):
+		params = super()._load(**params)
+		params["s"] = SealSignature.fromStr(params["s"], params["sf"])
+
+		return params	
+	
+	# @classmethod
+	# def fromDataStr(cls, data: SealSignDataStr, seal: str = SEAL_DEF, byte_range: str = B_DEF, signature: Opt[str] = None) -> Self:
+	# 	data_dict = asdict(data)
+	# 	data_dict['seal'] = seal
+	# 	data_dict['b']    = byte_range
+	# 	data_dict['s']    = signature
+	# 	return cls.new(**data_dict)
+
+	@classmethod
+	def fromData(cls, data: SealBaseData, **params) -> Self:
+		# From SealBaseData:
+		#		da: DA_ALGS_T = DA_DEF
+		#		+ byte_range + sig + sig_date
+		# From SealSignData/SealSignData_:
+		#		byte_range: str|SealByteRange = B_DEF
+		#		+ sig + sig_date
+		# From SealSignData_F:
+		#		sig: 		str|SealSignature
+		#		or:
+		#		sig:		bytes
+		# 		sig_date    Opt[datetime]     = None
+		if not isinstance(data, SealSignData_F):
+			data = SealSignData_F.fromData(data, **params)
+		
+		data_dict = asdict(data)
+		data_dict["s"] = sig_from_params(data_dict["sf"], **params)
+
 		return cls(**data_dict)
 
 	@classmethod
@@ -149,32 +393,62 @@ class SealMetadata():
 				raise ValueError(f"Unexpected key in SEAL string: \'{key}\'")
 			value = clean_str(val)
 
-			if key in ['seal', 'sl']:
-				if not value.isnumeric():
-					raise ValueError(f"Invalid integer value for \'{key}\' in SEAL string: \'{value}\'")
-				else:
-					meta_dict[key] = int(value)
-			else: 	meta_dict[key] = value
+			# if key in ['seal', 'sl']:
+			# 	if not value.isnumeric():
+			# 		raise ValueError(f"Invalid integer value for \'{key}\' in SEAL string: \'{value}\'")
+			# 	else:
+			# 		meta_dict[key] = int(value)
+			meta_dict[key] = value
 		
 		# Check Required:
 		for key in REQ:
 			if not key in meta_dict: raise ValueError(f"Missing {REQ[key]} from: {meta_str}")
-		return cls(**meta_dict)
+		return cls.new(**meta_dict)
 	
-	def set_signature(self, sig_b: bytes, sig_d: Opt[datetime] = None):
-		self.s = SealSignature(self.sf, sig_b, sig_d)
+	def toEntry(self) -> str:
+		return self.__str__()
 	
-	def set_byte_range(self, b: str = B_DEF):
-		self.b = SealByteRange(b)
+	def toWrapper(self) -> str:
+		return f"<seal {self.toEntry()}/>"
+	
 
-	def da_hash(self, file_bytes: bytes) -> Hash:
-		if self.da == "sha1":
-			return SHA1.new(file_bytes)
-		elif self.da == "sha256":
-			return SHA256.new(file_bytes)
-		elif self.da == "sha512":
-			return SHA512.new(file_bytes)
-		raise RuntimeError("Invalid digest algorithm: "+self.da)
+@dataclass(kw_only=True)	
+class SealVerifyData(SealBaseData):
+	# Required:
+	s:	  SealSignature			# Signature
+
+	@classmethod
+	def new(cls, 	d:   str,  					seal: Opt[str]= SEAL_DEF,
+		 			ka:   Opt[str] = KA_DEF,	kv:  Opt[str] = KV_DEF,		uid: Opt[str] = UID_DEF,	
+					sf:	  Opt[str] = SF_DEF,	id:  Opt[str] = None, 		s: str = ""):
+		params = locals()
+		del params["cls"]
+		params = clean_p(params)
+		return cls(**cls._load(**params))
+	
+	@classmethod
+	def _load(cls,**params):
+		params = super()._load(**params)
+		params["s"] = SealSignature.fromStr(params["s"], params["sf"])
+
+		return params
+	@classmethod
+	def fromData(cls, data: SealMetadata|SealBaseData, **params):
+		# From SealBaseData:
+		#		sig: 		str|SealSignature
+		#		or:
+		#		sig:		bytes
+		# 		sig_date    Opt[datetime]     = None
+		# From SealMetadata: nothing
+		data_dict = asdict(data)
+
+		if isinstance(data, SealBaseData) and not (isinstance(data, (SealMetadata, SealVerifyData))):
+			data_dict["s"] = sig_from_params(data_dict["sf"], **params)
+
+		f_names = [f.name for f in fields(cls)]
+		data_dict = {k:v for k,v in data_dict.items() if k in f_names}
+
+		return cls(**data_dict)
 
 	def ka_verify(self, public_key: SealBase64, digest: Hash) -> bool:
 		"""Use the key algorithm to verify the encrypted digest matches the signature
@@ -198,88 +472,24 @@ class SealMetadata():
 				return False
 		raise RuntimeError("Invalid key algorithm: "+self.ka)
 
-	def ka_encrypt(self, private_key: SealBase64, digest: Hash) -> bytes:
-		"""Use the key algorithm and private key to encrypt the digest
+def sig_from_params(sf: SealSignatureFormat, **params) -> SealSignature:
+	if not "sig" in params:
+		raise ValueError("Missing signature")
+	sig: str|bytes          = params["sig"]
+	sig_date: Opt[datetime] = params["sig_date"] if "sig_date" in params and isinstance(params["sig_date"], datetime) else None
 
-		Args:
-			private_key (SealBase64)
-			digest (Hash): From the `Cryto.Hash` package.
+	if isinstance(sig, SealSignature):
+		return sig
+	elif isinstance(sig, bytes):
+		return SealSignature(sig, sf, sig_date)
+	else:
+		return SealSignature.fromStr(str(sig), sf)
 
-		Raises:
-			RuntimeError: if the key algorithm isn't supported.
-			ValueError: if the key is invalid.
-
-		Returns:
-			bytes: the encrypted digest"""
-		if self.ka == "rsa":
-			rsa_key = RSA.import_key(private_key.val)
-			try:
-				return pkcs1_15.new(rsa_key).sign(digest)
-			except ValueError:
-				raise ValueError("Key is too short")
-			except TypeError:
-				raise ValueError("Key provided has no private component")
-		raise RuntimeError("Invalid key algorithm: "+self.ka)
-	def ka_key_size(self, private_key: SealBase64) -> int:
-		if self.ka == "rsa":
-			return RSA.import_key(private_key.val).size_in_bits()
-		raise RuntimeError("Invalid key algorithm: "+self.ka)
-			
-	def toEntry(self) -> str:
-		return self.__str__()
-	
-	def toWrapper(self) -> str:
-		return f"<seal {self.toEntry()}/>"
-	
-	def toDict(self) -> dict[str, str]:
-		attr_dict = self.__dict__
-		str_dict : dict[str, str] = {}
-		for key, value in attr_dict.items():
-			if value is not None:
-				
-				str_val = str(value)
-				if len(str_val) == 0: continue
-				if key in DEF and DEF[key] == str_val and not key in REQ: continue
-				str_dict[key] = str_val
-		return str_dict
-	
-	def __str__(self) -> str:
-		options = []
-		attr_dict = self.toDict()
-		
-		attr_order = list(attr_dict.keys())
-		
-		attr_order.sort(key=lambda k: -1 if k == 'seal' else 99999 if k == 's' else len(str(attr_dict[k])))
-
-		for attr in attr_order:
-			str_val = format_str(attr_dict[attr])
-			
-			options.append(attr + "=" + str_val)
-		return ' '.join(options)
-	
-
-	@staticmethod
-	def get_offsets(seal_str: str, d_digest: bool = False) -> Tuple[int, int]:
-		"""Get the start and end position of the signature excluding any quotation marks
-		i.e: <seal...s="~sig~"/>   (~ = S,s)
-
-		Args:
-			seal_str (str) \n
-			d_digest (bool): 
-				True = Exclude any date or user from the signature range  i.e: <seal...s="date:user:~sig~"/>
-				False = Include them in the signature range i.e: <seal...s="~date:user:sig~"/>
-
-		Returns:
-			Tuple[int, int]: _description_
-		"""
-		S = seal_str.index(" s=") + 3
-		
-		s = len(seal_str) - 2
-		if seal_str[S] == seal_str[s-1] and seal_str[S] in ['\'', '\"']:  
-			S += 1; s -= 1
-		
-		if seal_str[S:s].count(':') > 0 and d_digest:	# Move signature start past date + user:    date:user:_sig
-			S += seal_str[S:s].rfind(':') + 1
-		return (S, s)
-	
-			
+def clean_p(params: dict[str, Any]):
+	new_params = {}
+	for k,v in params.items():
+		if v is not None:
+			new_params[k] = v
+		elif k in DEF:
+			new_params[k] = DEF[k]
+	return new_params

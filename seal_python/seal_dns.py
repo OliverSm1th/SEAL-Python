@@ -6,7 +6,7 @@ from .seal_models import  (SealKeyVersion, SealUID, SealBase64, SealTimestamp,
 
 class SealDNS():
 	# Required:
-	seal: 	int					# SEAL Version
+	seal: 	str					# SEAL Version
 	p:		Opt[SealBase64]		# Base64 Public Key  (None=revoke)
 	ka:   	KEY_ALGS_T			# Key Algorithm
 	
@@ -16,7 +16,7 @@ class SealDNS():
 	#			(no default)
 	r:		Opt[SealTimestamp]	# Revocation Date (in GMT)
 
-	def __init__(self,  seal: int,	p: Opt[str],	ka: str = 'rsa',  
+	def __init__(self,  seal: str,	p: Opt[str],	ka: str = 'rsa',  
 						kv: str = "1", 		uid:  str = "",
 						r:  Opt[str] = None 	):
 		self.seal = seal
@@ -33,9 +33,9 @@ class SealDNS():
 		self.r = SealTimestamp(r) if r is not None else None  # All signatures after the date is invalid
 
 	@classmethod
-	def fromEntry(obj, dns_str: str):
+	def fromEntry(cls, dns_str: str):
 		dns_dict : dict[str, Any] = {}
-		dns_struct = get_type_hints(obj)
+		dns_struct = get_type_hints(cls)
 		fields = get_fields(dns_str)
 
 		for field in fields:
@@ -44,19 +44,19 @@ class SealDNS():
 				raise ValueError("Unexpected key in DNS string: "+key)
 			value = clean_str(val)
 			
-			if key == 'seal': 	
-				if not value.isnumeric():
-					raise ValueError(f"Invalid integer value for \'{key}\' in SEAL string: \'{value}\'")
-				else:
-					dns_dict[key] = int(value)
-			else: 	dns_dict[key] = value
+			# if key == 'seal': 	
+			# 	if not value.isnumeric():
+			# 		raise ValueError(f"Invalid integer value for \'{key}\' in SEAL string: \'{value}\'")
+			# 	else:
+			# 		dns_dict[key] = int(value)
+			dns_dict[key] = value
 
 		required = {'seal': 'SEAL version', 'ka': 'Key Algorithm'}
 		
 		for key in required:
 			if not key in dns_dict: raise ValueError(f"Missing {dns_dict[key]} ({key})")
 
-		return obj(**dns_dict)
+		return cls(**dns_dict)
 
 	def __str__(self) -> str:
 		options = []
