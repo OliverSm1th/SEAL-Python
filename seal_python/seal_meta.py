@@ -82,29 +82,6 @@ class SealBaseData:
 		if ka in KEY_ALGS: return cast(KEY_ALGS_T, ka)
 		return None
 	
-	def ka_encrypt(self, private_key: SealBase64, digest: Hash) -> bytes:
-		"""Use the key algorithm and private key to encrypt the digest
-
-		Args:
-			private_key (SealBase64)
-			digest (Hash): From the `Cryto.Hash` package.
-
-		Raises:
-			RuntimeError: if the key algorithm isn't supported.
-			ValueError: if the key is invalid.
-
-		Returns:
-			bytes: the encrypted digest"""
-		if self.ka == "rsa":
-			rsa_key = RSA.import_key(private_key.val)
-			try:
-				return pkcs1_15.new(rsa_key).sign(digest)
-			except ValueError:
-				raise ValueError("Key is too short")
-			except TypeError:
-				raise ValueError("Key provided has no private component")
-		raise RuntimeError("Invalid key algorithm: "+self.ka)
-
 	def ka_key_size(self, private_key: SealBase64) -> int:
 		return SealBaseData.ka_key_size_s(self.ka, private_key)
 	def sig_size(self, private_key: SealBase64) -> int:
@@ -209,8 +186,39 @@ class SealSignData(SealBaseData):
 
 		return cls(**data_dict)
 	
-	def da_hash(self, file_bytes: bytes) -> Hash:
-		return SealDigestInfo.hash_b(file_bytes, self.da)
+	def ka_encrypt(self, private_key: SealBase64, hash_b: bytes) -> bytes:
+		"""Use the key algorithm and private key to encrypt the digest
+
+		Args:
+			private_key (SealBase64)
+			hash_b (bytes): Hash calculated using the `Cryto.Hash` package.
+
+		Raises:
+			RuntimeError: if the key algorithm isn't supported.
+			ValueError: if the key is invalid.
+
+		Returns:
+			bytes: the encrypted digest"""
+		
+		hash = SealDigestInfo.dummy_hash(self.da, hash_b)
+
+		if self.ka == "rsa":
+			rsa_key = RSA.import_key(private_key.val)
+			try:
+				# Use a dummy hash (allows us to create a hash from hash_b (bytes))
+				# pkcs1_15.__.sign(hash) only does:
+				#	 hash.oid   &   hash.digest()     which is implemented in DummyHash
+				# See:https://github.com/Legrandin/pycryptodome/blob/master/lib/Crypto/Signature/pkcs1_15.py#L55
+				return pkcs1_15.new(rsa_key).sign(hash)
+			except ValueError:
+				raise ValueError("Key is too short")
+			except TypeError:
+				raise ValueError("Key provided has no private component")
+		raise RuntimeError("Invalid key algorithm: "+self.ka)
+
+	
+	def da_hash(self, file_bytes: bytes) -> bytes:
+		return SealDigestInfo.hash_b(file_bytes, self.da).digest()
 	
 	@classmethod
 	def da_cast(cls, da: str) -> Opt[DA_ALGS_T]:
@@ -251,9 +259,6 @@ class SealSignData_(SealSignData):
 		
 		data_dict = asdict(data)
 		return cls(**data_dict)
-	
-	def da_hash(self, file_bytes: bytes) -> Hash:
-		return SealDigestInfo.hash_b(file_bytes, self.da)
 	
 	@classmethod
 	def da_cast(cls, da: str) -> Opt[DA_ALGS_T]:
@@ -413,14 +418,14 @@ class SealMetadata(SealSignData_F):
 	
 
 @dataclass(kw_only=True)	
-class SealVerifyData(SealBaseData):
+class SealVerifyData(SealSignData):
 	# Required:
 	s:	  SealSignature			# Signature
 
 	@classmethod
-	def new(cls, 	d:   str,  					seal: Opt[str]= SEAL_DEF,
-		 			ka:   Opt[str] = KA_DEF,	kv:  Opt[str] = KV_DEF,		uid: Opt[str] = UID_DEF,	
-					sf:	  Opt[str] = SF_DEF,	id:  Opt[str] = None, 		s: str = ""):
+	def new(cls, 	d:   str,				 seal: Opt[str]= SEAL_DEF, 		ka:	 Opt[str] = KA_DEF,  
+		 			kv:  Opt[str] = KV_DEF,  uid: Opt[str] = UID_DEF,		sf:	  Opt[str] = SF_DEF,
+		 			id:  Opt[str] = None,  	 da:   Opt[str] = DA_DEF, 		s: str = ""):
 		params = locals()
 		del params["cls"]
 		params = clean_p(params)
@@ -435,10 +440,14 @@ class SealVerifyData(SealBaseData):
 	@classmethod
 	def fromData(cls, data: SealMetadata|SealBaseData, **params):
 		# From SealBaseData:
+		# 		da			DA_ALGS_T = DA_DEF
+		#		+ sig/sig_date
+		# From SealSignData:
 		#		sig: 		str|SealSignature
 		#		or:
 		#		sig:		bytes
 		# 		sig_date    Opt[datetime]     = None
+		# 
 		# From SealMetadata: nothing
 		data_dict = asdict(data)
 
@@ -450,12 +459,12 @@ class SealVerifyData(SealBaseData):
 
 		return cls(**data_dict)
 
-	def ka_verify(self, public_key: SealBase64, digest: Hash) -> bool:
+	def ka_verify(self, public_key: SealBase64, hash_b: bytes) -> bool:
 		"""Use the key algorithm to verify the encrypted digest matches the signature
 
 		Args:
 			public_key (SealBase64)
-			digest (Hash): From the `Crypt.Hash` package.
+			hash_b (bytes): Hash calculated using the `Crypt.Hash` package.
 
 		Raises:
 			RuntimeError: if the key algorithm or signature is invalid
@@ -465,8 +474,13 @@ class SealVerifyData(SealBaseData):
 		if self.s is None: raise RuntimeError("No signature set")
 		if self.ka == "rsa":
 			rsa_key = RSA.import_key(public_key.val)
+			hash = SealDigestInfo.dummy_hash(self.da, hash_b)
 			try:
-				pkcs1_15.new(rsa_key).verify(digest, self.s.sig_b)
+				# Use a dummy hash (allows us to create a hash from hash_b (bytes))
+				# pkcs1_15.__.verify(hash, signature) only calls on the Hash object:
+				#		hash.oid   hash.digest()     which is implemented in DummyHash
+				# See: https://github.com/Legrandin/pycryptodome/blob/master/lib/Crypto/Signature/pkcs1_15.py#L87
+				pkcs1_15.new(rsa_key).verify(hash, self.s.sig_b)
 				return True
 			except (ValueError, TypeError):
 				return False

@@ -15,6 +15,14 @@ def warning_format(msg, category, filename, lineno, line=None):
 warnings.formatwarning = warning_format
 
 
+KEY_ALGS_T = Lit['rsa']
+KEY_ALGS = get_args(KEY_ALGS_T)
+
+DA_ALGS_T = Lit[ 'sha256', 'sha512', 'sha1']
+DA_ALGS = get_args(DA_ALGS_T)
+DA_DEF : DA_ALGS_T 	= "sha256"
+DF_DEF = "base64"
+
 
 # Structure of Cryto.Hash objects (i.e SHA256/512/1):
 class Hash(Protocol):
@@ -28,6 +36,33 @@ class Hash(Protocol):
 	def new(self,data=None) -> Self: ...
 	def update(self,data:bytes|bytearray|memoryview) -> None: ...
 
+class DummyHash(Hash):
+	digest_size: int
+	block_size: int
+	oid: str
+	data_b: bytes
+	def __init__(self, data:bytes, da: DA_ALGS_T) -> None:
+		if da == "sha1":
+			hash : Hash = SHA1.SHA1Hash()
+		elif da == "sha256":
+			hash = SHA256.SHA256Hash()
+		elif da == "sha512":
+			hash = SHA512.SHA512Hash()
+		else:
+			raise RuntimeError("Invalid digest algorithm: "+da)
+		self.oid = hash.oid
+		self.block_size = hash.block_size
+		self.digest_size = hash.digest_size
+		self.data_b = data
+	def digest(self) -> bytes:
+		return self.data_b
+	def hexdigest(self) -> str:
+		return self.data_b.hex()
+	def copy(self) -> Self: return self
+	def new(self,data=None) -> Self: return self
+	def update(self,data:bytes|bytearray|memoryview) -> None: return None
+	
+		
 
 BYTE_LIT_ORDER = "FPpSsf"
 
@@ -190,7 +225,6 @@ class SealBinaryFormat:
 		self.format = cast(BIN_FORMATS_T, format)
 	
 	def binFromStr(self, bin_str: str) -> bytes:
-		print(f"Format: {self.format}")
 		if self.format == "base64":
 			no_pad = re.sub(r'[\s]+$', '', bin_str)
 			return b64_to_bytes(no_pad)
@@ -424,14 +458,6 @@ class SealTimestamp:
 		return self.time.isoformat()
 
 
-KEY_ALGS_T = Lit['rsa']
-KEY_ALGS = get_args(KEY_ALGS_T)
-
-DA_ALGS_T = Lit[ 'sha256', 'sha512', 'sha1']
-DA_ALGS = get_args(DA_ALGS_T)
-DA_DEF : DA_ALGS_T 	= "sha256"
-DF_DEF = "base64"
-
 class SealDigestInfo():
 	digest_format:  SealBinaryFormat
 	digest_algorithm: DA_ALGS_T
@@ -461,20 +487,20 @@ class SealDigestInfo():
 			raise ValueError("Invalid digest info, expecting \"format:algorithm\"")
 		return cls(df, da)
 	
-	def hashToStr(self, hash: Hash) -> str:
-		return self.digest_format.binToStr(hash.digest())
-	def hashFromStr(self, hash_s: str) -> Hash:
+	def hashToStr(self, hash_b: bytes) -> str:
+		return self.digest_format.binToStr(hash_b)
+	def hashFromStr(self, hash_s: str) -> bytes:
 		da = self.digest_algorithm
-		hash_b = self.digest_format.binFromStr(hash_s)
-		if da == "sha1":
-			hash : Hash = SHA1.SHA1Hash()
-		elif da == "sha256":
-			hash = SHA256.SHA256Hash()
-		elif da == "sha512":
-			hash = SHA512.SHA512Hash()
-		else:
-			raise RuntimeError("Invalid digest algorithm: "+da)
-		return hash.new(hash_b)
+		return self.digest_format.binFromStr(hash_s)
+		# if da == "sha1":
+		# 	hash : Hash = SHA1.SHA1Hash()
+		# elif da == "sha256":
+		# 	hash = SHA256.SHA256Hash()
+		# elif da == "sha512":
+		# 	hash = SHA512.SHA512Hash()
+		# else:
+		# 	raise RuntimeError("Invalid digest algorithm: "+da)
+		# return hash.new(hash_b)
 
 	def hash(self, digest_str: str) -> Hash:
 		digest_b = self.digest_format.binFromStr(digest_str)
@@ -489,6 +515,10 @@ class SealDigestInfo():
 		elif da == "sha512":
 			return SHA512.new(digest_b)
 		raise RuntimeError("Invalid digest algorithm: "+da)
+	
+	@classmethod
+	def dummy_hash(cls, da: DA_ALGS_T, hash_b: bytes) -> DummyHash:
+		return DummyHash(hash_b, da)
 
 	def __str__(self) -> str:
 		return f"{self.digest_format}:{self.digest_algorithm}"

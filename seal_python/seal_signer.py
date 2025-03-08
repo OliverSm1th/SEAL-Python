@@ -9,7 +9,7 @@ from .seal_meta import SealSignData
 	
 class SealSigner(ABC):
 	@abstractmethod
-	def sign(self, s_data: SealSignData, digest_hash: Hash) -> SealSignature:
+	def sign(self, s_data: SealSignData, digest_hash: bytes) -> SealSignature:
 		"""Signs the digest
 
 		Args:
@@ -43,12 +43,12 @@ class SealLocalSign(SealSigner):
 	def __init__(self, private_key: Union[str, bytes]):
 		self.private_key = SealBase64(private_key)
 	
-	def sign(self, s_data: SealSignData, digest_hash: Hash) -> SealSignature:
+	def sign(self, s_data: SealSignData, digest_hash: bytes) -> SealSignature:
 		sig_d = None
 
 		if (s_data.sf.date_format is not None) or (s_data.id is not None):
 			# Double digest
-			digest1 = digest_hash.digest()
+			digest1 = digest_hash
 			head = ""
 			if s_data.id is not None:
 				head = s_data.id + ":" + head
@@ -56,7 +56,8 @@ class SealLocalSign(SealSigner):
 				sig_d = datetime.now()
 				head = s_data.sf.format_date(sig_d) + ":" + head
 			digest2 = head.encode() + digest1
-			digest_hash = digest_hash.new(digest2)
+			digest_hash = s_data.da_hash(digest2)
+			# digest_hash = digest_hash.new(digest2)
 		sig_b = s_data.ka_encrypt(self.private_key, digest_hash)
 		return SealSignature(sig_b, s_data.sf, sig_d)
 		
@@ -71,7 +72,7 @@ class SealDummySign(SealSigner):
 	def __init__(self, sig_size: int):
 		self.size = sig_size
 	
-	def sign(self, s_data: SealSignData, digest_hash: Hash) -> SealSignature:
+	def sign(self, s_data: SealSignData, digest_hash: bytes) -> SealSignature:
 		size = self.size // 8
 		date = None
 		if (s_data.sf.date_format is not None): 
@@ -96,8 +97,8 @@ class SealRemoteSign(SealSigner):
 		self.api_key = api_key
 		
 		
-	def sign(self, s_data: SealSignData, digest_hash: Hash) -> SealSignature:
-		digest_h: str = digest_hash.digest().hex()
+	def sign(self, s_data: SealSignData, digest_hash: bytes) -> SealSignature:
+		digest_h: str = digest_hash.hex()
 		req_data = {
 			'seal':  str(s_data.seal),
 			'apikey': self.api_key,

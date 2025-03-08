@@ -5,11 +5,11 @@ from .log import log
 from typing import List
 import dns.resolver as DNS, dns.rdatatype as DNS_TYPE
 
-def verify_seal_s(s_data: SealBaseData, digest: Hash, sig: str):
+def verify_seal_s(s_data: SealBaseData, digest: bytes, sig: str):
     s_data_ = SealVerifyData.fromData(s_data, sig=sig)
     return verify_seal(s_data_, digest)
 
-def verify_seal(s_data: SealVerifyData, digest: Hash):
+def verify_seal(s_data: SealVerifyData, digest: bytes):
     if s_data.s is None:    raise RuntimeError("Missing signature")
     
     # Fetch byte range:
@@ -17,15 +17,15 @@ def verify_seal(s_data: SealVerifyData, digest: Hash):
     # log(f"Digest ({s_data.da}): {digest.hexdigest()}")
     
     if (s_data.sf.date_format is not None) or (s_data.id is not None): # Double digest
-        digest1 = digest.digest()
+        digest1 = digest
         head = ""
         if s_data.id is not None:
             head = s_data.id + ":" + head
         if s_data.sf.date_format is not None:
             head = s_data.s.date_str() + ":" + head
         digest2 = head.encode() + digest1
-        digest = digest.new(digest2)
-        log(f"Double Digest: {digest.hexdigest()}")
+        digest = s_data.da_hash(digest2)
+        log(f"Double Digest: {digest.hex()}")
         
 
     # Retrieve the public key from the DNS entry
@@ -64,7 +64,7 @@ def verify_seal(s_data: SealVerifyData, digest: Hash):
             
         if result: return
         else:
-            warnings.warn(warn_pre + f"Calculated digest ({digest.digest().hex()}) != Expected digest");  continue
+            warnings.warn(warn_pre + f"Calculated digest ({digest.hex()}) != Expected digest");  continue
 
     raise ValueError("No matching DNS entry found")
 
