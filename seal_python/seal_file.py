@@ -2,7 +2,7 @@ from io import BufferedReader as File
 from os import path as os_path
 from shutil import move as os_move
 import re
-from typing import List, Tuple, Optional as Opt, NamedTuple, Dict, Union
+from typing import List, Tuple, Optional as Opt, NamedTuple, Dict
 import warnings
 from .seal_models import BytePos, SealByteRange
 from .seal_meta import SealMetadata, SealVerifyData, SealSignData_F
@@ -174,9 +174,6 @@ class SealFile():
         self.r_file = open(w_file_path, "rb")
         self.r_file_path = w_file_path
 
-        # TODO: do we need this (commented out for now)
-        # if overwrite: return # TODO: set shift to difference in length
-
         # Shift all positions in self.seal_arr and self.saved_pos if needed
         shift = len(bytes)
         for entry_i, entry in enumerate(self.seal_arr):
@@ -274,67 +271,6 @@ class SealFile():
         if len(self.seal_arr) > 0:
             return self.seal_arr[-1].seal
         return None
-
-    # (allowing for multiple SEAL signatures per block)
-    """
-    def read_seal_block(self, block_len: int):
-        \"""Parses and validates a SEAL block with the structure <seal .../> ... <seal .../>
-
-        :param block_len: Length of block
-        :type block_len: int
-        :raises Warning: A warning is thrown if it finds an invalid or malformed SEAL entry
-        :raises ValueError: An error is thrown if the block is not a valid SEAL block
-        \"""         
-        block = self.file.read(block_len)
-        S = self.file.tell()
-        s = S + block_len
-        self.seal_pos.append((S, s))
-
-        block_str = str.strip(block.decode())
-
-        seal_block : List[SealMetadata] = []
-        seal_i = self.seal_arr_i[-1] if len(self.seal_arr_i)>0 else -1
-        if not re.match("^<((\\*:)|\\?)?seal ", block_str):
-            raise ValueError("Invalid SEAL block")
-
-        while re.match("^<((\\*:)|\\?)?seal ", block_str):
-            seal_i += 1
-
-            if not ("/>" in block_str):
-                warnings.warn("SEAL #{seal_i}: Invalid record, should be of the form <seal .../>")
-                warnings.warn("Invalid SEAL record: \'Expecting a \"/>\" to terminate (#{seal_i})\'")
-                self.seal_arr.append(seal_block)
-                return
-            
-            block_str = block_str[block_str.index("seal")+5:]
-            end_i     = block_str.index("/>")
-            seal_str  = block_str[:end_i]
-            block_str = block_str[end_i+2:]
-
-            if self.is_finalised:
-                warnings.warn("     Invalid record, cannot include another signature after a finalized signature")
-                continue            
-
-            try:
-                seal = SealMetadata.fromWrapper(seal_str)
-            except ValueError as e:
-                warnings.warn(f"     Invalid record:  \'{str(e)}\', skipping")
-                continue
-            except Warning as w:
-                warnings.warn(f"    {w}")
-
-            if len(self.seal_arr) > 0 and seal.b.overlaps(self.seal_arr[-1]):
-                warnings.warn(f"    Invalid record: Overlaps with previous signature")
-                continue
-
-            
-            if seal.b.includes_lit("f", True): # Finalised
-                self.is_finalised = True
-            
-            seal_block.append(seal)
-
-        self.seal_arr.append(seal_block)
-    """
 
     def end_verify(self):
         last_block = self.seal_arr[-1]

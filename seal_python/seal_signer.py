@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Union
 import json
 
-from .seal_models import SealBase64, SealSignature, Hash
+from .seal_models import SealBase64, SealSignature
 from .seal_meta import SealSignData
 	
 class SealSigner(ABC):
@@ -30,6 +30,9 @@ class SealSigner(ABC):
 
 		Returns:
 			int: Size of the signature (number of bits)
+		Throws:
+			ValueError if invalid parameters passed
+			RuntimeException if something unexpected went wrong
 		"""
 		pass
 	@abstractmethod
@@ -57,7 +60,6 @@ class SealLocalSign(SealSigner):
 				head = s_data.sf.format_date(sig_d) + ":" + head
 			digest2 = head.encode() + digest1
 			digest_hash = s_data.da_hash(digest2)
-			# digest_hash = digest_hash.new(digest2)
 		sig_b = s_data.ka_encrypt(self.private_key, digest_hash)
 		return SealSignature(sig_b, s_data.sf, sig_d)
 		
@@ -156,7 +158,7 @@ class SealRemoteSign(SealSigner):
 			SyntaxError: Unable to parse data as JSON
 
 		Returns:
-			dict[str, str]  """
+			dict[str, str]"""
 		data_b = '&'.join([f'{k}={v}' for k, v in data_dict.items()]).encode()
 		
 		if headers: req_h = headers

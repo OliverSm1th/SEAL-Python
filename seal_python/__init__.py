@@ -2,7 +2,7 @@
     SEAL: implemented in Python
     An open solution for assigning attribution with authentication to media.
     
-    :copyright: TODO
+    :copyright: Oliver Smith + Dr. Neal Krawetz, see LICENSE
     :license: MIT, see LICENSE for details
 """
 import sys
@@ -16,5 +16,5 @@ from .seal_signer import SealLocalSign, SealRemoteSign, SealSigner
 from .seal_verify import verify_seal
 # File Formats:
 from .format_png import seal_sign_png, seal_read_png
-# For testing: 
+# General Models: (mainly for testing) 
 from .seal_models import SealByteRange, SealSignatureFormat, SealSignature, SealKeyVersion, SealUID, SealBase64, SealTimestamp, SealDigestInfo, Hash, SealBinaryFormat

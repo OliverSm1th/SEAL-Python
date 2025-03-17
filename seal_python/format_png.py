@@ -23,11 +23,6 @@ def seal_sign_png(s_file: SealFile, s_data: SealSignData_, s_sign: SealSigner, n
         # TODO: Figure out when/how it can error
         ValueError: If the file is invalid (i.e. not a PNG) or malformed
     """
-    # if isinstance(s_data, SealSignDataStr):
-    #     seal = SealMetadata.fromDataStr(s_data, byte_range=PNG_BYTE_RANGE)
-    # else:
-    #     seal = s_data
-    #     seal.set_byte_range(PNG_BYTE_RANGE)
     seal = SealSignData_F.fromData(s_data, byte_range=PNG_BYTE_RANGE)
 
     # Scan the file for prior signatures
@@ -166,32 +161,7 @@ with SealFile(TEST_PNG) as s_file:
         id="***REMOVED***"
     )
 
-    l_sign = SealLocalSign(
-                      "MIIEogIBAAKCAQEAspKfzW955TEnslAoFqwl6kEZxRphmWC7JC5uUJNXjdR7ECX2\
-                    rN3aC2WUf89yoE7Wwu8cOmH2QU4uWtA4BFGfETtRORRhsTyGjFRYBDM7uFZDIZ5O\
-                    tIGqlqq+L6fqsojTpm5ZDnWFFSCWSYSSO1RCZ/iU+IOOoLCNoFJJHbjWrG+pP7Pv\
-                    81qk7HOhOpXlKDYUD+ARVmXDPHzNrcaOXBk9NIdZV++SAQbm97bsKd2hf3G1BrES\
-                    1D9TOxc1JW/e3e91XcD6FvUEhdhFMCLaSTMi4vAHABmCScyDUPzPMBqadiNvOnu8\
-                    XPubWsWsO7o1vHdxwF7JcVgJATQJJ93Z7fmVtwIDAQABAoIBAAqzs4oPV+x+xqnu\
-                    wzL1/DZkJ77ioYjHUvqMdyYIaTiMdxefqX9GCHmjC9mhEss9Y6zpFvWqG0+3TMXl\
-                    MVuTkgc+rn56PzntA69IpWxoWaLm4JJqN2ilVhY+Lgm9yYNg+eDr6hXDa0dkiD09\
-                    tGSD3JBN8Iz4QsWp7xhK9it8LA7HbzT0mpWbuYqDor8+9O5YfcE0FmIw2w3Bt6nj\
-                    MKyyVrEYWFWppHsZzrU9utaw3tfhI3d9r3S9C2XT9L/0bT/wCr71HW4pJCvc4nT8\
-                    q4Gvd1VIZTLST25dcX0HJ/bZUsb39+3hF4YVIJUN/6uD0fqP0mbBiwtUs4moE6Oh\
-                    VNW8AaECgYEA8taA+dLD2+1vtU+lW7GJ+5wD2LM1/7UBACTvNmrdUpoeLkXJil79\
-                    ChOMOZz7tn6m7afuedcHEb6SVBisDORGBAQUV4k3qau2syhde1/JUQxg3B8BpW7E\
-                    Uv3Ui57cB75FtqohhSeJVcfkCFD13/nd0JWyCF8Fuk0yA3RlHizFy+cCgYEAvEBo\
-                    2chRJJQLrrkCpSUQErF8b3/uWhhvIX0YyioXN5219tGfiQHw4+JKoTqUsJ6MHpp0\
-                    MO+3hOOyDb8ammXGNQnRXtY5ehKHW89iF92YmFLOtQAbWBucSMIBgT9tLbGrQfLb\
-                    kapVnXHGt73Ij6hH627EtaFL7bGqNRVUEpygLbECgYBHF0j22h8AmYgkekaci2Mr\
-                    x8bQf9aFH4ZFdoqZUbutXPUM8t1HpvtJIePhUfXWvUk9NfZ4sNye8z1/ZSGpPILK\
-                    1i7mWYN0JpL77AtB/Q7ArXEFwAYJWl4bNbgtj7o2ghuCmFfr1WE9PaGiVaFFiq7H\
-                    S6utC7Rvj/3eSQr5RH47bQKBgHUZI5+EiWTVakbu8oRDf7IBEURSMbN9S3NrW0Y1\
-                    1GdWBOBZGIGi4XL/SijsRZ1vof1PWkMueduBvznpy+SKtjY7uy7g1rPmXqhvYbcy\
-                    sj7eE5JnVJsD4b0oYMNC7ujjgYHuTUJY0BS1t0SIGv+xT7tVFatdf9uFDjki4T8K\
-                    imChAoGAP4ha1dLRtKk8p70/GfvM2c3WMD4UitbXG80h8dXiyaxB5sgeFVF2HprM\
-                    H+9/qjDdTUOl1V+YEkWp3PAh3UUHODo0z7qKz/gia5gPTC3TJI0PGqRKKYpFJthF\
-                    B4gDzF7IeUngPAIx65A1M6b+9mO+WkG/tepdJqmDmvj5ZEXf03o=")
+    l_sign = SealLocalSign("[privateKey]")
     r_sign = SealRemoteSign(
         "https://signmydata.com/?sign",
         # "http://localhost:8080",

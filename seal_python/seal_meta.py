@@ -1,22 +1,16 @@
 from datetime import datetime
 import re
 from typing_extensions import Any, Self   # Allows < Python3.11 to work 
-from typing import NamedTuple, Optional as Opt, Tuple, cast, get_type_hints, ClassVar
+from typing import Optional as Opt, cast, get_type_hints
 import Crypto.PublicKey.RSA as RSA
 from Crypto.Signature import pkcs1_15
-from .seal_models import  (SealByteRange, SealSignature, SealSignatureFormat, SealKeyVersion, SealUID, SealBase64, Hash, SealDigestInfo,
-						  KEY_ALGS_T, KEY_ALGS, DA_ALGS_T, DA_ALGS, get_fields, clean_str, format_str)
+from .seal_models import  (SealByteRange, SealSignature, SealSignatureFormat, SealKeyVersion, SealUID, SealBase64, SealDigestInfo,
+						  KEY_ALGS_T, KEY_ALGS, DA_ALGS_T, DA_ALGS, get_fields, clean_str, format_str, 
+						  SEAL_DEF, DA_DEF, KA_DEF, KV_DEF, B_DEF, UID_DEF, SF_DEF
+						  )
 from dataclasses import dataclass, asdict, field, fields
 
 # Default Values:
-SEAL_DEF = "1"
-
-KA_DEF : KEY_ALGS_T = "rsa"
-KV_DEF : str		= "1"
-DA_DEF : DA_ALGS_T 	= "sha256"
-B_DEF  : str		= "F~S,s~f"
-UID_DEF: str		= ""
-SF_DEF : str		= "base64"
 DEF: dict[str, str] = {
 	"ka" : KA_DEF,
 	"kv" : KV_DEF,
@@ -25,7 +19,7 @@ DEF: dict[str, str] = {
 	"uid": UID_DEF,
 	"sf" : SF_DEF
 }
-
+# Required Values:
 REQ = {
 	'seal': 'SEAL version', 
 	'ka': 'Key Algorithm', 
@@ -33,7 +27,6 @@ REQ = {
 	'd': 'domain name'
 }
 
-# TODO: Explore using dataclass better (look at factories for new + SealDNS)
 @dataclass(kw_only=True)
 class SealBaseData:
 	# Basic Seal datatype, describing the minimum data required to authenticate a signature (from a digest)
@@ -42,7 +35,7 @@ class SealBaseData:
 	d:	  str					# Domain Name
 
 	# Optional:  (with default values)
-	ka:   KEY_ALGS_T  	= KA_DEF							# Key Algorithm
+	ka:   KEY_ALGS_T  	= KA_DEF														# Key Algorithm
 	kv:   SealKeyVersion= field(default_factory=lambda: SealKeyVersion(KV_DEF))			# Key Version
 	uid:  SealUID		= field(default_factory=lambda: SealUID(UID_DEF))				# UUID/Date
 	sf:   SealSignatureFormat = field(default_factory=lambda: SealSignatureFormat(SF_DEF)) # Signature Format
@@ -62,10 +55,7 @@ class SealBaseData:
 	
 	@classmethod
 	def _load(cls,**params):
-		# Convert values from str -> relevant object
-		# if not params["seal"].isnumeric():  raise ValueError("Invalid seal: "+params["seal"])
-		# params["seal"] = int(params["seal"])
-
+		# Try convert values from str -> relevant object
 		ka = cls.ka_cast(params["ka"])
 		if ka is None: raise ValueError("Invalid key algorithm: "+params["ka"])
 		params["ka"] = ka
@@ -127,31 +117,6 @@ class SealBaseData:
 			options.append(attr + "=" + str_val)
 		return ' '.join(options)
 
-
-# class SealSignData(SealBaseData):
-# 	# Optional:   (no default)
-# 	copyright: 	Opt[str] = None		# Copyright information
-# 	info: 		Opt[str] = None		# Textual comment information
-# 	sl:   		Opt[str] = None		# Signature Length (not implemented)	
-
-
-# 	@classmethod
-# 	def new(cls, 	seal: str,	d:   str,	 ka:	 	Opt[str] = KA_DEF,  kv:  	Opt[str] = KV_DEF,  uid: Opt[str] = UID_DEF,	sf:	  Opt[str] = SF_DEF,
-# 		 			id:  Opt[str] = None,  	 copyright: Opt[str] = None,	info: 	Opt[str] = None,	sl:	 Opt[int] = None):
-# 		params = locals()
-# 		del params["cls"]
-# 		return cls(**cls._load(**params))
-	
-# 	@classmethod
-# 	def _load(cls,**params):
-# 		params = super()._load(**params)
-# 		return params
-	
-# 	@classmethod
-# 	def fromData(cls, data: SealBaseData):
-# 		data_dict = asdict(data)
-# 		return cls(**data_dict)
-
 @dataclass(kw_only=True)
 class SealSignData(SealBaseData):
 	# The minimum data required to sign an image (digest algorithm allows for double digest)
@@ -206,9 +171,9 @@ class SealSignData(SealBaseData):
 			rsa_key = RSA.import_key(private_key.val)
 			try:
 				# Use a dummy hash (allows us to create a hash from hash_b (bytes))
-				# pkcs1_15.__.sign(hash) only does:
-				#	 hash.oid   &   hash.digest()     which is implemented in DummyHash
-				# See:https://github.com/Legrandin/pycryptodome/blob/master/lib/Crypto/Signature/pkcs1_15.py#L55
+				# pkcs1_15.__.sign(hash) only calls:
+				#	 'hash.oid'   &   'hash.digest()'     which is implemented in DummyHash
+				# See: https://github.com/Legrandin/pycryptodome/blob/master/lib/Crypto/Signature/pkcs1_15.py#L55
 				return pkcs1_15.new(rsa_key).sign(hash)
 			except ValueError:
 				raise ValueError("Key is too short")
@@ -230,7 +195,7 @@ class SealSignData(SealBaseData):
 
 @dataclass(kw_only=True)
 class SealSignData_(SealSignData):
-	# Extended data for signing adding optional textual information
+	# Extended data for signing with optional textual information
 	# Optional:   (no default)
 	copyright: 	Opt[str] = None		# Copyright information
 	info: 		Opt[str] = None		# Textual comment information
@@ -267,7 +232,7 @@ class SealSignData_(SealSignData):
 
 @dataclass(kw_only=True)
 class SealSignData_F(SealSignData_):
-	# Data for signing within a file. This includes the byte range which is used to generate a digest
+	# Data for signing from within a file signing method. This includes the byte range which is used to generate a digest
 	b:    SealByteRange = SealByteRange(B_DEF)	 # Digest Byte Range
 	@classmethod
 	def new(cls, 	d:   str,				 seal: Opt[str]= SEAL_DEF, 		ka:	 Opt[str] = KA_DEF,  
@@ -307,25 +272,6 @@ class SealSignData_F(SealSignData_):
 	def default(cls):
 		return DEF
 
-# class SealVerifyA(SealSignData):
-# 	# Required for verification, generated while signing
-# 	s:    Opt[SealSignature] = None   	 		# Signature	
-# 	@classmethod
-# 	def new(cls, 	seal: str,				d:   str,					ka:	 KEY_ALGS_T	= KA_DEF,	
-# 		 			kv:   str = KV_DEF,		da:  DA_ALGS_T= DA_DEF,		uid: str		= UID_DEF,	
-# 					sf:	  str = SF_DEF,		id:  Opt[str] = None,		copyright: Opt[str]=None,
-# 					info: Opt[str]	=None,	sl:	 Opt[str] = None,
-					
-# 					s:    Opt[str] = None):
-# 		params = locals()
-# 		del params["cls"]
-# 		return cls(**cls._load(**params))
-# 	@classmethod
-# 	def _load(cls,**params):
-# 		params = super()._load(**params)
-# 		params["s"] = SealSignature.fromStr(params["s"], params["sf"]) if params["s"] is not None else None
-# 		return params
-
 @dataclass(kw_only=True)
 class SealMetadata(SealSignData_F):
 	# Full metadata which can be saved into the file
@@ -349,14 +295,6 @@ class SealMetadata(SealSignData_F):
 		params["s"] = SealSignature.fromStr(params["s"], params["sf"])
 
 		return params	
-	
-	# @classmethod
-	# def fromDataStr(cls, data: SealSignDataStr, seal: str = SEAL_DEF, byte_range: str = B_DEF, signature: Opt[str] = None) -> Self:
-	# 	data_dict = asdict(data)
-	# 	data_dict['seal'] = seal
-	# 	data_dict['b']    = byte_range
-	# 	data_dict['s']    = signature
-	# 	return cls.new(**data_dict)
 
 	@classmethod
 	def fromData(cls, data: SealBaseData, **params) -> Self:
@@ -398,11 +336,6 @@ class SealMetadata(SealSignData_F):
 				raise ValueError(f"Unexpected key in SEAL string: \'{key}\'")
 			value = clean_str(val)
 
-			# if key in ['seal', 'sl']:
-			# 	if not value.isnumeric():
-			# 		raise ValueError(f"Invalid integer value for \'{key}\' in SEAL string: \'{value}\'")
-			# 	else:
-			# 		meta_dict[key] = int(value)
 			meta_dict[key] = value
 		
 		# Check Required:
@@ -448,7 +381,7 @@ class SealVerifyData(SealSignData):
 		#		sig:		bytes
 		# 		sig_date    Opt[datetime]     = None
 		# 
-		# From SealMetadata: nothing
+		# From SealMetadata: Nothing
 		data_dict = asdict(data)
 
 		if isinstance(data, SealBaseData) and not (isinstance(data, (SealMetadata, SealVerifyData))):
@@ -477,8 +410,8 @@ class SealVerifyData(SealSignData):
 			hash = SealDigestInfo.dummy_hash(self.da, hash_b)
 			try:
 				# Use a dummy hash (allows us to create a hash from hash_b (bytes))
-				# pkcs1_15.__.verify(hash, signature) only calls on the Hash object:
-				#		hash.oid   hash.digest()     which is implemented in DummyHash
+				# pkcs1_15.__.verify(hash, signature) only calls:
+				#		'hash.oid'  &  'hash.digest()'  which is implemented in DummyHash
 				# See: https://github.com/Legrandin/pycryptodome/blob/master/lib/Crypto/Signature/pkcs1_15.py#L87
 				pkcs1_15.new(rsa_key).verify(hash, self.s.sig_b)
 				return True

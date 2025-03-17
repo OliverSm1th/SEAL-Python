@@ -1,5 +1,5 @@
 import warnings
-from .seal_meta import Hash, SealVerifyData, SealBaseData
+from .seal_meta import SealVerifyData, SealBaseData
 from .seal_dns  import SealDNS
 from .log import log
 from typing import List
@@ -11,11 +11,7 @@ def verify_seal_s(s_data: SealBaseData, digest: bytes, sig: str):
 
 def verify_seal(s_data: SealVerifyData, digest: bytes):
     if s_data.s is None:    raise RuntimeError("Missing signature")
-    
-    # Fetch byte range:
-    # digest       = s_data.da_hash(digest_bytes)
-    # log(f"Digest ({s_data.da}): {digest.hexdigest()}")
-    
+       
     if (s_data.sf.date_format is not None) or (s_data.id is not None): # Double digest
         digest1 = digest
         head = ""

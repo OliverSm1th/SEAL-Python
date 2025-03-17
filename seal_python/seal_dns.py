@@ -44,11 +44,6 @@ class SealDNS():
 				raise ValueError("Unexpected key in DNS string: "+key)
 			value = clean_str(val)
 			
-			# if key == 'seal': 	
-			# 	if not value.isnumeric():
-			# 		raise ValueError(f"Invalid integer value for \'{key}\' in SEAL string: \'{value}\'")
-			# 	else:
-			# 		dns_dict[key] = int(value)
 			dns_dict[key] = value
 
 		required = {'seal': 'SEAL version', 'ka': 'Key Algorithm'}

@@ -15,21 +15,33 @@ def warning_format(msg, category, filename, lineno, line=None):
 warnings.formatwarning = warning_format
 
 
+# Basic Types:
 KEY_ALGS_T = Lit['rsa']
 KEY_ALGS = get_args(KEY_ALGS_T)
 
 DA_ALGS_T = Lit[ 'sha256', 'sha512', 'sha1']
 DA_ALGS = get_args(DA_ALGS_T)
-DA_DEF : DA_ALGS_T 	= "sha256"
-DF_DEF = "base64"
 
+BIN_FORMATS_T = Lit["hex", "HEX", "base64", "bin"]
+BIN_FORMATS = get_args(BIN_FORMATS_T)
+
+# Defaults:
+SEAL_DEF = "1"
+
+DA_DEF : DA_ALGS_T 	= "sha256"
+KA_DEF : KEY_ALGS_T = "rsa"
+KV_DEF : str		= "1"
+B_DEF  : str		= "F~S,s~f"
+UID_DEF: str		= ""
+BIN_DEF : str = "base64"
+SF_DEF : str = f"{BIN_DEF}"
 
 # Structure of Cryto.Hash objects (i.e SHA256/512/1):
 class Hash(Protocol):
 	digest_size: int
 	block_size: int
 	oid: str
-	def __init__(self, data=None) -> None: ...
+	# def __init__(self, data=None) -> None: ...
 	def copy(self) -> Self: ...
 	def digest(self) -> bytes: ...
 	def hexdigest(self) -> str: ...
@@ -47,7 +59,7 @@ class DummyHash(Hash):
 		elif da == "sha256":
 			hash = SHA256.SHA256Hash()
 		elif da == "sha512":
-			hash = SHA512.SHA512Hash()
+			hash = SHA512.SHA512Hash(None, None)
 		else:
 			raise RuntimeError("Invalid digest algorithm: "+da)
 		self.oid = hash.oid
@@ -63,7 +75,6 @@ class DummyHash(Hash):
 	def update(self,data:bytes|bytearray|memoryview) -> None: return None
 	
 		
-
 BYTE_LIT_ORDER = "FPpSsf"
 
 class BytePos:
@@ -124,16 +135,13 @@ class SealByteRange:
 	str_byte_range: str
 	byte_range: List[Tuple[BytePos, BytePos]]
 
-	def __init__(self, byte_range: str):
+	def __init__(self, byte_range: str = B_DEF):
 		self.str_byte_range = byte_range
-		self.byte_range = self._get_range(byte_range)	
 
-	@staticmethod
-	def _get_range(str_byte_range: str) -> List[Tuple[BytePos, BytePos]]:  # TODO: Merge to init?
-		values : List[Tuple[BytePos, BytePos]] = []
+		self.byte_range : List[Tuple[BytePos, BytePos]] = []
 
 		positions: List[BytePos] = [] 
-		for range in str_byte_range.split(','):
+		for range in self.str_byte_range.split(','):
 			if range.count('~') != 1:
 				raise ValueError(f"Invalid ByteRange \'{range}\', must be of the form: start~stop")
 			
@@ -147,16 +155,39 @@ class SealByteRange:
 				prev_pos = positions[i-1]
 				prev_pos.check_next(cur_pos)
 				if(i%2 != 0):
-					values.append((prev_pos, cur_pos))
-		return values
+					self.byte_range.append((prev_pos, cur_pos))
 	
 	def _flatten(self) -> List[BytePos]:
 		arr : List[BytePos] = []
 		for range in self.byte_range:
 			arr.extend(range)
 		return arr
+		
+	def includes_lit(self, lit: str, allow_offset: bool = False) -> bool:
+		for byte_pos in self._flatten():
+			if byte_pos.literal == lit and (allow_offset or byte_pos.offset == 0):
+				return True
+		return False
+
+	def check(self, isFirst: bool = True):
+		if isFirst:
+			if not(self.includes_lit('F')):
+				warnings.warn(f"Digest byte range starts at: \'{self.str_start()}\', should be \'F\' for full coverage")
+		else:
+			if not(self.includes_lit('F') or self.includes_lit('P')):
+				warnings.warn(f"Digest byte range starts at: \'{self.str_start()}\', should be \'F\' or \'P\' for full coverage")
+
+	def str_start(self) -> str:
+		return str(self.byte_range[0][0])
 	
-	def overlaps(self, a, b: Self) -> bool:  # TODO: Remove?
+	def str_end(self) -> str:
+		return str(self.byte_range[-1][1])
+
+	def __str__(self) -> str:
+		return self.str_byte_range
+	
+	# Unused:
+	def overlaps(self, a, b: Self) -> bool:
 		a_arr = a._flatten()
 		b_arr = b._flatten()
 		a_i = 0
@@ -190,36 +221,11 @@ class SealByteRange:
 			if(a_before):   a_i += 1
 			else:			b_i += 1
 		return False
-	
-	def includes_lit(self, lit: str, allow_offset: bool = False) -> bool:
-		for byte_pos in self._flatten():
-			if byte_pos.literal == lit and (allow_offset or byte_pos.offset == 0):
-				return True
-		return False
 
-	def check(self, isFirst: bool = True):
-		if isFirst:
-			if not(self.includes_lit('F')):
-				warnings.warn(f"Digest byte range starts at: \'{self.str_start()}\', should be \'F\' for full coverage")
-		else:
-			if not(self.includes_lit('F') or self.includes_lit('P')):
-				warnings.warn(f"Digest byte range starts at: \'{self.str_start()}\', should be \'F\' or \'P\' for full coverage")
-
-	def str_start(self) -> str:
-		return str(self.byte_range[0][0])
-	
-	def str_end(self) -> str:
-		return str(self.byte_range[-1][1])
-
-	def __str__(self) -> str:
-		return self.str_byte_range
-
-BIN_FORMATS_T = Lit["hex", "HEX", "base64", "bin"]
-BIN_FORMATS = get_args(BIN_FORMATS_T)
 
 class SealBinaryFormat:
 	format: BIN_FORMATS_T
-	def __init__(self, format: str):
+	def __init__(self, format: str=BIN_DEF):
 		if not format in BIN_FORMATS:
 			raise ValueError("should be one of: \""+("\", \"".join(BIN_FORMATS)+"\""))
 		self.format = cast(BIN_FORMATS_T, format)
@@ -260,12 +266,11 @@ class SealBinaryFormat:
 	def __str__(self) -> str:
 		return self.format
 
-# TODO: Move defaults to within seal_model methods as people might initialise them directly + they should take their defaults here
 class SealSignatureFormat:
 	date_format: Opt[int] = None
 	signature_format: SealBinaryFormat
 	
-	def __init__(self, sf: str) -> None:
+	def __init__(self, sf: str=SF_DEF) -> None:
 		sig_str = sf
 		sep_num = sf.count(':')
 
@@ -388,7 +393,7 @@ class SealSignature():
 
 class SealKeyVersion:
 	key_version: str
-	def __init__(self, kv: str):
+	def __init__(self, kv: str=KV_DEF):
 		SealKeyVersion.check(kv)		# Check it's valid
 		self.key_version = kv
 	def __str__(self) -> str:
@@ -403,7 +408,7 @@ class SealKeyVersion:
 
 class SealUID:
 	uid: str
-	def __init__(self, uid: str):
+	def __init__(self, uid: str=UID_DEF):
 		SealUID.check(uid)
 		self.uid = uid
 	def __str__(self) -> str:
@@ -415,10 +420,8 @@ class SealUID:
 		if not(re.match("^[^\"\'\\s]+$|^$", uid)):
 			raise ValueError("Unique identifier cannot include the following characters: [\"\'] or any whitespace")
 
-# TODO: Understand base64
 def b64_to_bytes(str_64: str) -> bytes:
 	str_val = re.sub('={0,2}$', '', str_64)
-	# str_val_pad = str_val + '=='#if (len(str_val)%3 != 0) else str_val
 	pad_len = -len(str_val) % 4
 	if pad_len == 3:
 		raise ValueError(f"Invalid base64: \"{str_val}\" (invalid length)")
@@ -428,7 +431,6 @@ def b64_to_bytes(str_64: str) -> bytes:
 		return base64.b64decode(str_val_pad, validate=True)
 	except BinError as e:
 		raise ValueError(f"Invalid base64: \"{str_val_pad}\" ({e})") from None
-
 
 class SealBase64:
 	val: bytes
@@ -461,7 +463,7 @@ class SealTimestamp:
 class SealDigestInfo():
 	digest_format:  SealBinaryFormat
 	digest_algorithm: DA_ALGS_T
-	def __init__(self, digest_format: Opt[str|SealBinaryFormat]=DF_DEF, digest_algorithm: Opt[str]=DA_DEF) -> None:
+	def __init__(self, digest_format: Opt[str|SealBinaryFormat]=BIN_DEF, digest_algorithm: Opt[str]=DA_DEF) -> None:
 		if digest_format is None: raise RuntimeError("Invalid digest format")
 		
 		try:
