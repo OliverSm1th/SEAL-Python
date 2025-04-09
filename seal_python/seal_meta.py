@@ -66,6 +66,11 @@ class SealBaseData:
 		params["sf"] = SealSignatureFormat(params["sf"])
 
 		return params
+	@classmethod
+	def fromData(cls, data: Self, **params):
+		data_dict = asdict(data)
+		data_dict = filter_data(data_dict, cls)
+		return cls(**data_dict)
 	
 	@classmethod
 	def ka_cast(cls, ka: str) -> Opt[KEY_ALGS_T]:
@@ -148,7 +153,7 @@ class SealSignData(SealBaseData):
 		da = cls.da_cast(params["da"])
 		if da is None: raise ValueError("Invalid digest algorithm: "+params["da"])
 		data_dict["da"] = da
-
+		data_dict = filter_data(data_dict, cls)
 		return cls(**data_dict)
 	
 	def ka_encrypt(self, private_key: SealBase64, hash_b: bytes) -> bytes:
@@ -223,6 +228,7 @@ class SealSignData_(SealSignData):
 			data = SealSignData.fromData(data, **params)
 		
 		data_dict = asdict(data)
+		data_dict = filter_data(data_dict, cls)
 		return cls(**data_dict)
 	
 	@classmethod
@@ -267,6 +273,7 @@ class SealSignData_F(SealSignData_):
 
 		data_dict = asdict(data)
 		data_dict["b"] = byte_range if isinstance(byte_range, SealByteRange) else SealByteRange(byte_range)
+		data_dict = filter_data(data_dict, cls)
 		return cls(**data_dict)
 	@classmethod
 	def default(cls):
@@ -387,8 +394,9 @@ class SealVerifyData(SealSignData):
 		if isinstance(data, SealBaseData) and not (isinstance(data, (SealMetadata, SealVerifyData))):
 			data_dict["s"] = sig_from_params(data_dict["sf"], **params)
 
-		f_names = [f.name for f in fields(cls)]
-		data_dict = {k:v for k,v in data_dict.items() if k in f_names}
+		# f_names = [f.name for f in fields(cls)]
+		# data_dict = {k:v for k,v in data_dict.items() if k in f_names}
+		data_dict = filter_data(data_dict, cls)
 
 		return cls(**data_dict)
 
@@ -440,3 +448,8 @@ def clean_p(params: dict[str, Any]):
 		elif k in DEF:
 			new_params[k] = DEF[k]
 	return new_params
+
+def filter_data(data_dict: dict[str, Any], target_type: type):
+	# Filter the data_dict to remove any parameters not used for the target_type
+	field_names = [f.name for f in fields(target_type)]
+	return {k:v for k,v in data_dict.items() if k in field_names}
