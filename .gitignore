@@ -1,8 +1,12 @@
-.pytest_cache/
 .vscode/
 .mypy_cache/
 __pycache__
 .tmp.py
+
+# Tests:
+.pytest_cache/
+.env
+tests/*-test.png
 
 # Packaging:
 build/

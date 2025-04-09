@@ -2,7 +2,6 @@ from seal_python import *
 import pytest
 
 
-
 def convert_dict(test_dict):
     test_arr = []
     for k,v in test_dict.items():
