@@ -22,7 +22,8 @@ classifiers=[
 dependencies = [
     "dnspython",
     "pycryptodome",
-    "typing-extensions"
+    "typing-extensions",
+    "certifi"
 ]
 license = {file = "LICEN[CS]E*"}
 

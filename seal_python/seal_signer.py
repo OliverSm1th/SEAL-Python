@@ -3,6 +3,9 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Union
 import json
+import ssl
+import certifi
+from typing import Any
 
 from .seal_models import SealBase64, SealSignature
 from .seal_meta import SealSignData
@@ -131,23 +134,25 @@ class SealRemoteSign(SealSigner):
 		if s_data.id is not None:
 			req_data['id'] = s_data.id
 
-		sign_params = self._send_req_dict(req_data, self.api_url)
-		if 'error' in sign_params:
-			raise ValueError(f"Unable to fetch signing parameters using {self.api_url}\n    Data: {req_data}\n    "+sign_params['error'])
-		if not 'sigsize' in sign_params:
-			raise ValueError(f"Unable to fetch signing parameters using {self.api_url}\n    Data: {req_data}\n    Missing sigsize")
+		try:
+			sign_params = self._send_req_dict(req_data, self.api_url)
+			if 'error' in sign_params: 			raise ValueError(sign_params['error'])
+			if not 'sigsize' in sign_params:	raise ValueError("Missing sigsize")
+		except ValueError as e:					raise ValueError(f"Unable to fetch signing parameters using {self.api_url}\n    Data: {req_data}\n    {str(e)}")
 
 		size = sign_params['sigsize']*4
+		if isinstance(size, int):
+			return size
+		elif str(size).isnumeric():
+			return int(str(size))
 
-		if size.isnumeric():
-			return int(size)
 		return 0
 	
 	def type_str(self) -> str:
 		return "Remote"
 
 	@staticmethod
-	def _send_req_dict(data_dict: dict[str, str], url: str, headers:dict[str, str]={}) -> dict[str, str]:
+	def _send_req_dict(data_dict: dict[str, str], url: str, headers:dict[str, str]={}) -> dict[str, Any]:
 		"""Sends the data in a request to the api_url, returning the results as a string dictionary
 
 		Args:
@@ -170,7 +175,7 @@ class SealRemoteSign(SealSigner):
 		req = urllib.request.Request(url, data_b,
                             headers=req_h)
 		try:
-			response = urllib.request.urlopen(req)
+			response = urllib.request.urlopen(req, context=ssl.create_default_context(cafile=certifi.where()))
 		except urllib.error.HTTPError as e:
 			raise ValueError(f"HTTPError: {e.code}")
 		except urllib.error.URLError as e:
@@ -180,4 +185,4 @@ class SealRemoteSign(SealSigner):
 		try:	
 			return json.loads(response_b)
 		except json.decoder.JSONDecodeError:
-			raise SyntaxError("Invalid JSON: "+response_b.decode('utf8'))
+			raise ValueError("Invalid JSON response: "+response_b.decode('utf8'))
