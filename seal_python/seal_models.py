@@ -494,15 +494,6 @@ class SealDigestInfo():
 	def hashFromStr(self, hash_s: str) -> bytes:
 		da = self.digest_algorithm
 		return self.digest_format.binFromStr(hash_s)
-		# if da == "sha1":
-		# 	hash : Hash = SHA1.SHA1Hash()
-		# elif da == "sha256":
-		# 	hash = SHA256.SHA256Hash()
-		# elif da == "sha512":
-		# 	hash = SHA512.SHA512Hash()
-		# else:
-		# 	raise RuntimeError("Invalid digest algorithm: "+da)
-		# return hash.new(hash_b)
 
 	def hash(self, digest_str: str) -> Hash:
 		digest_b = self.digest_format.binFromStr(digest_str)

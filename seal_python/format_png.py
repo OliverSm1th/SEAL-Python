@@ -78,7 +78,7 @@ def seal_read_png(s_file: SealFile) -> list[SealEntry]:
         
         log(f"--{chunk_type}     {chunk_size}")
 
-        if(chunk_type.lower() in ["text", "itxt", "seal"]):  # TODO: for tEXt do you separate the keyword?
+        if(chunk_type.lower() in ["text", "itxt", "seal"]):
             log_h("│   ")
             result = s_file.read_txt_block(chunk_size)
             
@@ -125,7 +125,6 @@ def generate_seal_chunk(data_b: bytes) -> bytes:
 
 
 # CRC Implemention using: https://www.w3.org/TR/REC-png-961001#CRCAppendix
-
 crc_table: List[int] = []
 def populate_crc_table() -> None:
     for n in range(256):
@@ -143,35 +142,4 @@ def crc(inp_b: bytes) -> int:
 
     for byte in inp_b:
         c = crc_table[(c ^ byte) & 0xff] ^ ((c >> 8)&0xFFFFFF)
-    return c ^ 0xffffffff
-
-"""
-useLocal = False
-
-TEST_PNG = "./tests/seal.png"
-num = "" if useLocal else "2"
-SIGNED_PNG = f"./tests/seal-sign{num}.png"
-with SealFile(TEST_PNG) as s_file:
-    # seal_read_png(s_file)
-
-    s_data = SealSignData_(
-        d="***REMOVED***" if useLocal else "signmydata.com",
-        sf="base64",
-        # id="***REMOVED***"
-        id="***REMOVED***"
-    )
-
-    l_sign = SealLocalSign("[privateKey]")
-    r_sign = SealRemoteSign(
-        "https://signmydata.com/?sign",
-        # "http://localhost:8080",
-        "***REMOVED***"
-    )
-
-    seal_sign_png(s_file, 
-                  s_data,
-                  l_sign if useLocal else r_sign,
-                  "./tests/seal-sign.png"
-                  )
-    seal_read_png(s_file)
-"""
+    return c ^ 0xffffffff 

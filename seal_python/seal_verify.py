@@ -91,7 +91,6 @@ def get_seal_dns(domain: str) -> List[SealDNS]:
         try:
             seal_dns = SealDNS.fromEntry(val_str)
         except ValueError as e:
-            # warnings.warn(f"Invalid SEAL DNS record   (domain={domain})\n    {val_str}\n    {e}")
             continue
         seal_dns_arr.append(seal_dns)
     return seal_dns_arr

@@ -229,7 +229,6 @@ class SealFile():
         return digest_bytes
 
     def _file_pos(self, bp: BytePos, S_i: int, write_block: bool = False) -> int:
-        # TODO: Remove
         # When reading, S_i is the number of the current SEAL block which Ss refers to
         # When writing, S_i is the position of the insert point as the block hasn't been added yet (write_block=True)
         seal_num = len(self.seal_arr)
@@ -237,7 +236,7 @@ class SealFile():
         if write_block:
             if bp.literal in "Ss":  # Block hasn't been added, use insert position
                 return S_i + bp.offset
-            S_i = 0 # For Pp so it refers to the last block in the array
+            S_i = 0 # For Pp so it refers to the last block in the array when it fetches seal_arr[S_i-1]
 
         if bp.literal in 'Ss' and (S_i >= seal_num or seal_num==0):
             raise RuntimeError(f"Invalid byte pos: {bp.literal} for SEAL block #{S_i}, block not added yet (size={seal_num})")

@@ -67,8 +67,8 @@ def test_signature(sf_str: str, s: str, is_valid: bool):
 
 # Testing SealDigestInfo
 di_tests = [
-    # hex/HEX/base64/bin  sha256/sha512/sha1    hash_s   is_valid hash_valid
-    (       "hex",              "sha256",    "124db2f794301d895f5c0fcb5b545e3740c49d52d91ed48a3cc3fc9a157ef925",  True,    True   )
+    # hex/HEX/base64/bin  sha256/sha512/sha1    hash_s                                                       is_valid hash_valid
+    (     "hex",              "sha256",    "124db2f794301d895f5c0fcb5b545e3740c49d52d91ed48a3cc3fc9a157ef925",  True,    True   )
 ]
 
 
