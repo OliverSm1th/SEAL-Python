@@ -43,7 +43,7 @@ def seal_sign_png(s_file: SealFile, s_data: SealSignData_, s_sign: SealSigner, n
     log(f"Signing: {signed_seal}")
     chunk_b = generate_seal_chunk(signed_seal.toWrapper().encode())
     s_file.insert_seal_block(chunk_b, signed_seal, 8, S_i=S_i)
-    s_file.reset()
+    s_file.reset_pos()
 
 def seal_read_png(s_file: SealFile) -> list[SealEntry]:
     """ Fetches SEAL metadata entries from a PNG file
@@ -60,7 +60,7 @@ def seal_read_png(s_file: SealFile) -> list[SealEntry]:
 
     Returns:
         SealFile: The updated SealFile containing all valid SEAL entries"""
-    
+    s_file.reset()
     cmp_str = b"\x89PNG\r\n\x1a\n"
     if s_file.read(len(cmp_str)) != cmp_str:  raise ValueError("Invalid PNG, missing PNG header")
 
@@ -104,7 +104,7 @@ def seal_read_png(s_file: SealFile) -> list[SealEntry]:
         chunk_type_b = list(s_file.read(4))
 
     log("-------PNG------")
-    s_file.reset()
+    s_file.reset_pos()
     return s_file.seal_arr
 
 # Helper Functions;

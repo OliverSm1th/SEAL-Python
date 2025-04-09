@@ -60,7 +60,7 @@ def verify_seal(s_data: SealVerifyData, digest: bytes):
             
         if result: return
         else:
-            warnings.warn(warn_pre + f"Calculated digest ({digest.hex()}) != Expected digest");  continue
+            raise ValueError(f"Calculated digest ({digest.hex()}) != Expected digest");
 
     raise ValueError("No matching DNS entry found")
 
@@ -91,7 +91,7 @@ def get_seal_dns(domain: str) -> List[SealDNS]:
         try:
             seal_dns = SealDNS.fromEntry(val_str)
         except ValueError as e:
-            warnings.warn(f"Invalid SEAL DNS record   (domain={domain})\n    {val_str}\n    {e}")
+            # warnings.warn(f"Invalid SEAL DNS record   (domain={domain})\n    {val_str}\n    {e}")
             continue
         seal_dns_arr.append(seal_dns)
     return seal_dns_arr

@@ -28,10 +28,14 @@ class SealFile():
         self.r_file_path = path
         self.r_file = open(path, "rb")
         # Initial Values:
+        self.reset()
+        if debug:   set_debug(debug)
+
+    def reset(self):
         self.seal_arr     = []
         self.saved_pos    = {}
         self.is_finalised = False
-        if debug:   set_debug(debug)
+        self.reset_pos()
 
     def __enter__(self):
         return self
@@ -199,7 +203,7 @@ class SealFile():
         self.r_file.seek(self.saved_pos[key], 0)
         return True
     
-    def reset(self) -> None:
+    def reset_pos(self) -> None:
         self.r_file.seek(0,0)
 
     def fetch_byte_range(self, br: SealByteRange, S_i: int = 0) -> bytes:
