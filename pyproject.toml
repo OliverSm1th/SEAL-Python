@@ -25,7 +25,7 @@ dependencies = [
     "typing-extensions",
     "certifi"
 ]
-license = {file = "LICEN[CS]E*"}
+license = {file = "LICENCE"}
 
 [project.urls]
 Homepage = "https://github.com/OliverSm1th/SEAL-Python"
