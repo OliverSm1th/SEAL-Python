@@ -5,6 +5,7 @@
     :copyright: Oliver Smith + Dr. Neal Krawetz, see LICENSE
     :license: MIT, see LICENSE for details
 """
+__version__ = "0.0.1"
 import sys
 assert sys.version_info >= (3, 9)
 
