@@ -22,3 +22,4 @@ python_version = "3.11"
 test = "python -m pytest tests/"
 type-check = "mypy ./"
 lint = "pylint ./"
+build = "python -m build
