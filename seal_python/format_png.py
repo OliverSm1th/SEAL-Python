@@ -20,7 +20,6 @@ def seal_sign_png(s_file: SealFile, s_data: SealSignData_, s_sign: SealSigner, n
         new_path (str): Location for the signed file (none = overwrite previous file)
 
     Raises:
-        # TODO: Figure out when/how it can error
         ValueError: If the file is invalid (i.e. not a PNG) or malformed
     """
     seal = SealSignData_F.fromData(s_data, byte_range=PNG_BYTE_RANGE)

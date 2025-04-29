@@ -70,24 +70,3 @@ di_tests = [
     # hex/HEX/base64/bin  sha256/sha512/sha1    hash_s                                                       is_valid hash_valid
     (     "hex",              "sha256",    "124db2f794301d895f5c0fcb5b545e3740c49d52d91ed48a3cc3fc9a157ef925",  True,    True   )
 ]
-
-
-# @pytest.mark.parametrize(["df", "da", "hash_s", "is_valid", "hash_valid"], di_tests)
-# def test_digestinfo(df: str, da: str, hash_s: str, is_valid: bool, hash_valid: bool):
-#     try:
-#         di = SealDigestInfo(df, da)
-#     except ValueError as e:
-#         assert not is_valid, f"{e}"
-#         return
-#     if not is_valid:
-#         assert False, "Accepted invalid digest info"
-    
-#     try:
-#         hash = di.hashFromStr(hash_s)
-#         hash_s2 = di.hashToStr(hash)
-#         hash2 = di.hashFromStr(hash_s2)
-#         assert hash == hash_s2, f"Hashes not matching  {hash.digest()!r} ({hash_s}) != {hash2.digest()!r} ({hash_s2})"
-#     except ValueError as e:
-#         assert not hash_valid, f"{e}"
-#         return
-    

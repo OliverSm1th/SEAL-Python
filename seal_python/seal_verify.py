@@ -32,7 +32,7 @@ def verify_seal(s_data: SealVerifyData, digest: bytes):
     for seal_dns in seal_dns_arr:
         warn_pre = f"Invalid SEAL DNS record   (domain={s_data.d})\n    {str(seal_dns)}\n    "
 
-        if seal_dns.seal != s_data.seal:     # TODO: Do you just reject all versions != 1?
+        if seal_dns.seal != s_data.seal:     # QUERY: Do you just reject all versions != 1?
             warnings.warn(warn_pre + f"DNS version ({seal_dns.seal}) != Record version ({s_data.seal})");  continue
     
         if seal_dns.ka != s_data.ka:  
@@ -44,7 +44,7 @@ def verify_seal(s_data: SealVerifyData, digest: bytes):
         if seal_dns.uid != s_data.uid: 
             warnings.warn(warn_pre + f"DNS uid ({seal_dns.uid}) != Record uid ({s_data.uid})");  continue
     
-        if seal_dns.p is None: # Public key revoked  # TODO: Should this check for other DNS records? 
+        if seal_dns.p is None: # Public key revoked  # QUERY: Should this check for other DNS records? 
             raise ValueError(f"All instances of the public key (kv={s_data.kv}) are revoked")
     
         if (seal_dns.r is not None and (s_data.s.date is None or seal_dns.r.time < s_data.s.date)):

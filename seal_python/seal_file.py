@@ -89,7 +89,7 @@ class SealFile():
             verify_seal(seal_v, hash)              # Throws ValueError if invalid
         except ValueError as e:
             warnings.warn(f"  Invalid SEAL- {str(e)}")
-            self.seal_arr.pop()  # Remove invalid SEAL recordseal_num-1
+            self.seal_arr.pop()  # Remove invalid SEAL record
             return (False, seal)  
         return (True, seal)
     
@@ -302,6 +302,6 @@ def get_offsets(seal_str: str, d_digest: bool = False) -> Tuple[int, int]:
 		if seal_str[S] == seal_str[s-1] and seal_str[S] in ['\'', '\"']:  
 			S += 1; s -= 1
 		
-		if seal_str[S:s].count(':') > 0 and d_digest:	# Move signature start past date + user:    date:user:_sig
+		if seal_str[S:s].count(':') > 0 and d_digest:	# Move signature start past date + user:    date:user:↓sig
 			S += seal_str[S:s].rfind(':') + 1
 		return (S, s)
